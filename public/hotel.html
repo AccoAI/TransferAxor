@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transfer Axor - Pantalla hotel</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script>
+    (function() {
+      var key = (typeof window.GOOGLE_MAPS_API_KEY !== "undefined" && window.GOOGLE_MAPS_API_KEY) ? window.GOOGLE_MAPS_API_KEY : "YOUR_GOOGLE_MAPS_API_KEY";
+      var s = document.createElement("script");
+      s.src = "https://maps.googleapis.com/maps/api/js?key=" + key + "&callback=initMap&language=es";
+      s.async = true;
+      s.defer = true;
+      document.head.appendChild(s);
+    })();
+  </script>
+</head>
+<body class="hotel-page map-page">
+  <header class="map-header hotel-header">
+    <img src="img/logo-axor.png" alt="Axor Hoteles" class="header-logo">
+    <h1>Transfer — Campezo 10 ↔ Barajas T1–T4</h1>
+  </header>
+
+  <div class="map-container">
+    <div id="map"></div>
+    <div class="legend display-board hotel-board" id="legend">
+      <div class="legend-section">
+        <div class="legend-eta-title">Vehículos — llegadas por parada, horario Madrid (Hotel → T1 → T2 → T3 → T4 → Hotel)</div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-vito1"><span class="legend-dot vito1"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 1</span><span class="legend-pax" id="pax1"></span><span class="legend-eta" id="eta1"></span></div><div class="legend-vehicle-status" id="status1"></div></div></div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-vito2"><span class="legend-dot vito2"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 2</span><span class="legend-pax" id="pax2"></span><span class="legend-eta" id="eta2"></span></div><div class="legend-vehicle-status" id="status2"></div></div></div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-vito3"><span class="legend-dot vito3"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 3</span><span class="legend-pax" id="pax3"></span><span class="legend-eta" id="eta3"></span></div><div class="legend-vehicle-status" id="status3"></div></div></div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-vito4"><span class="legend-dot vito4"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 4</span><span class="legend-pax" id="pax4"></span><span class="legend-eta" id="eta4"></span></div><div class="legend-vehicle-status" id="status4"></div></div></div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-minibus"><span class="legend-dot minibus"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Minibús</span><span class="legend-pax" id="pax5"></span><span class="legend-eta" id="eta5"></span></div><div class="legend-vehicle-status" id="status5"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const CAMPEZO = { lat: 40.447914, lng: -3.583004 };
+    const CAMPEZO_STR = "Calle Campezo 10, 28022 Madrid";
+    const TERMINALES = [
+      { lat: 40.46412, lng: -3.57045, name: "Terminal T1 Salidas", link: "https://maps.app.goo.gl/jewMDcD6YS92QkUMA" },
+      { lat: 40.46817, lng: -3.56969, name: "Terminal T2 Barajas", link: "https://maps.app.goo.gl/EtAnKzxfKwGc2fyeA" },
+      { lat: 40.47044, lng: -3.57117, name: "Terminal T3 Barajas", link: "https://maps.app.goo.gl/R91V3qW8t1vhRaMo6" },
+      { lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
+    ];
+
+    const vehicleIds = ["vito1", "vito2", "vito3", "vito4", "minibus"];
+    const colors = { vito1: "#f59e0b", vito2: "#10b981", vito3: "#8b5cf6", vito4: "#ec4899", minibus: "#ef4444" };
+    const etaEl = { vito1: "eta1", vito2: "eta2", vito3: "eta3", vito4: "eta4", minibus: "eta5" };
+    const paxEl = { vito1: "pax1", vito2: "pax2", vito3: "pax3", vito4: "pax4", minibus: "pax5" };
+    const statusEl = { vito1: "status1", vito2: "status2", vito3: "status3", vito4: "status4", minibus: "status5" };
+    const vehicleRowEl = { vito1: "vehicle-row-vito1", vito2: "vehicle-row-vito2", vito3: "vehicle-row-vito3", vito4: "vehicle-row-vito4", minibus: "vehicle-row-minibus" };
+
+    const socket = io();
+
+    let map;
+    let directionsRenderer;
+    const vehicleMarkers = {};
+    const vehicleMeta = {};
+    const stopPoints = [];
+    var lastVehiclesLive = {};
+    var activeVehicleIdOnMap = null;
+    var lastActiveVehicleEta = null;
+    let routeLegDurationsSec = null;
+    const PARADA_TERMINAL_MIN = 4;
+    const ROUTE_STOP_NAMES = ["T1", "T2", "T3", "T4", "Hotel"];
+    const MADRID_TZ = "Europe/Madrid";
+
+    function distanceKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    const lastEtaOrigin = {};
+    const ETA_THROTTLE_KM = 0.3;
+
+    function pad2(n) {
+      return (n < 10 ? "0" : "") + n;
+    }
+
+    function madridClockParts(date) {
+      const parts = new Intl.DateTimeFormat("es-ES", {
+        timeZone: MADRID_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).formatToParts(date || new Date());
+      const pick = function(type) {
+        return parseInt(parts.find(function(p) { return p.type === type; }).value, 10);
+      };
+      return { hour: pick("hour"), minute: pick("minute") };
+    }
+
+    function formatArrivalTimeMadrid(secondsFromNow) {
+      return new Date(Date.now() + secondsFromNow * 1000).toLocaleTimeString("es-ES", {
+        timeZone: MADRID_TZ,
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    function getDepartureDisplay(atHotel) {
+      const clock = madridClockParts(new Date());
+      const hour = clock.hour;
+      const min = clock.minute;
+      if (atHotel) {
+        if (min < 5) return { imminent: true, time: pad2(hour) + ":00" };
+        if (min >= 30 && min < 35) return { imminent: true, time: pad2(hour) + ":30" };
+      }
+      if (min < 30) return { imminent: false, time: pad2(hour) + ":30" };
+      return { imminent: false, time: pad2((hour + 1) % 24) + ":00" };
+    }
+
+    function getSecondsUntilDeparture() {
+      const dep = getDepartureDisplay(true);
+      if (dep.imminent) return 0;
+      const target = dep.time.split(":").map(Number);
+      const now = Date.now();
+      for (let delta = 0; delta <= 24 * 3600 * 1000; delta += 1000) {
+        const instant = new Date(now + delta);
+        const clock = madridClockParts(instant);
+        if (clock.hour === target[0] && clock.minute === target[1]) {
+          return Math.max(0, Math.round(delta / 1000));
+        }
+      }
+      return 0;
+    }
+
+    function getEndOfLeg(legIndex) {
+      if (legIndex < 4) return { lat: TERMINALES[legIndex].lat, lng: TERMINALES[legIndex].lng };
+      return { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
+    }
+
+    function getCurrentLegIndex(lat, lng) {
+      const dHotel = distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng);
+      if (dHotel < 0.15) return -1;
+      const d = [
+        distanceKm(lat, lng, TERMINALES[0].lat, TERMINALES[0].lng),
+        distanceKm(lat, lng, TERMINALES[1].lat, TERMINALES[1].lng),
+        distanceKm(lat, lng, TERMINALES[2].lat, TERMINALES[2].lng),
+        distanceKm(lat, lng, TERMINALES[3].lat, TERMINALES[3].lng)
+      ];
+      const iMin = d.indexOf(Math.min.apply(null, d));
+      const distToHotel = dHotel;
+      if (distToHotel <= d[0] && distToHotel <= d[1] && distToHotel <= d[2] && distToHotel <= d[3]) return 4;
+      if (iMin === 0) return distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng) <= d[1] ? 0 : 1;
+      if (iMin === 1) return d[0] <= d[2] ? 1 : 2;
+      if (iMin === 2) return d[1] <= d[3] ? 2 : 3;
+      return d[2] <= distToHotel ? 3 : 4;
+    }
+
+    function computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) return null;
+      const etas = [];
+      const start = currentLeg < 0 ? 0 : currentLeg;
+      for (let s = start; s < 5; s++) {
+        let sec = departureWaitSec || 0;
+        if (currentLeg < 0) {
+          for (let i = 0; i <= s; i++) sec += routeLegDurationsSec[i];
+          sec += s * PARADA_TERMINAL_MIN * 60;
+        } else {
+          sec += remainingOnLegSec;
+          for (let i = currentLeg + 1; i <= s; i++) sec += routeLegDurationsSec[i];
+          sec += (s - currentLeg) * PARADA_TERMINAL_MIN * 60;
+        }
+        etas.push({ name: ROUTE_STOP_NAMES[s], sec: sec, text: formatArrivalTimeMadrid(sec) });
+      }
+      return etas;
+    }
+
+    function formatEtasDisplay(stopEtas, depInfo) {
+      if (!stopEtas || !stopEtas.length) return { summary: "—", detail: "" };
+      const next = stopEtas[0];
+      const summary = "Siguiente: " + next.name + " · llegada " + next.text;
+      const lines = stopEtas.map(function(stop) { return stop.name + ": " + stop.text; });
+      if (depInfo) {
+        lines.unshift((depInfo.imminent ? "Salida inminente " : "Salida ") + depInfo.time);
+      }
+      return { summary: summary, detail: lines.join("\n") };
+    }
+
+    function applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, departureWaitSec, depInfo) {
+      const stopEtas = computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec);
+      const meta = vehicleMeta[vehicleId] || {};
+      meta.stopEtas = stopEtas;
+      meta.stopEtasAt = Date.now();
+      meta.routeEtaContext = {
+        currentLeg: currentLeg,
+        remainingOnLegSec: remainingOnLegSec,
+        departureWaitSec: departureWaitSec || 0
+      };
+      vehicleMeta[vehicleId] = meta;
+      const display = formatEtasDisplay(stopEtas, depInfo);
+      setEtaForVehicle(vehicleId, label, {
+        summary: display.summary,
+        detail: display.detail,
+        stopEtas: stopEtas
+      });
+    }
+
+    function refreshActiveVehicleEta(directionsService) {
+      if (!lastActiveVehicleEta || !directionsService) return;
+      updateEtaFromGoogle(
+        lastActiveVehicleEta.id,
+        lastActiveVehicleEta.lat,
+        lastActiveVehicleEta.lng,
+        lastActiveVehicleEta.label,
+        directionsService
+      );
+    }
+
+    function updateEtaFromGoogle(vehicleId, lat, lng, label, directionsService) {
+      const currentLeg = getCurrentLegIndex(lat, lng);
+      if (currentLeg < 0) {
+        if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
+          setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
+          return;
+        }
+        const dep = getDepartureDisplay(true);
+        applyRouteEtas(vehicleId, label, -1, 0, getSecondsUntilDeparture(), dep);
+        return;
+      }
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
+        setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
+        return;
+      }
+      const last = lastEtaOrigin[vehicleId];
+      if (last && distanceKm(lat, lng, last.lat, last.lng) < ETA_THROTTLE_KM) return;
+      lastEtaOrigin[vehicleId] = { lat: lat, lng: lng };
+      setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
+
+      const endPoint = getEndOfLeg(currentLeg);
+      directionsService.route({
+        origin: { lat: lat, lng: lng },
+        destination: endPoint,
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      }, function(result, status) {
+        if (status !== google.maps.DirectionsStatus.OK) {
+          if (vehicleId === activeVehicleIdOnMap) setEtaForVehicle(vehicleId, label, { summary: "—", detail: "" });
+          return;
+        }
+        if (vehicleId !== activeVehicleIdOnMap) return;
+        const remainingOnLegSec = result.routes[0].legs[0].duration.value;
+        applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, 0, null);
+      });
+    }
+
+    function setVehicleRowActive(vehicleId) {
+      vehicleIds.forEach(function(id) {
+        const row = document.getElementById(vehicleRowEl[id]);
+        if (row) row.classList.toggle("legend-vehicle-row-active", id === vehicleId);
+      });
+    }
+
+    function setPaxForVehicle(vehicleId, passengers, capacity, isActive) {
+      const meta = vehicleMeta[vehicleId] || {};
+      meta.passengers = passengers || 0;
+      meta.capacity = capacity || 8;
+      vehicleMeta[vehicleId] = meta;
+      const paxNode = document.getElementById(paxEl[vehicleId]);
+      if (paxNode) paxNode.textContent = isActive ? ("A bordo " + meta.passengers + "/" + meta.capacity) : "A bordo —";
+      if (vehicleMarkers[vehicleId]) {
+        const label = meta.label || vehicleId;
+        vehicleMarkers[vehicleId].setTitle(label + " · A bordo " + meta.passengers + "/" + meta.capacity);
+      }
+    }
+
+    function setEtaForVehicle(vehicleId, label, eta) {
+      const meta = vehicleMeta[vehicleId] || {};
+      meta.label = label;
+      if (eta && eta.stopEtas) {
+        meta.stopEtas = eta.stopEtas;
+        meta.stopEtasAt = Date.now();
+      }
+      vehicleMeta[vehicleId] = meta;
+      const el = document.getElementById(etaEl[vehicleId]);
+      if (el) el.textContent = eta.summary || "—";
+      const statusNode = document.getElementById(statusEl[vehicleId]);
+      if (statusNode) statusNode.textContent = eta.detail || "";
+    }
+
+    function createVehicleIcon(vehicleId) {
+      const c = colors[vehicleId] || "#888";
+      return {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 12,
+        fillColor: c,
+        fillOpacity: 1,
+        strokeColor: "#fff",
+        strokeWeight: 3
+      };
+    }
+
+    let routeBounds = null;
+    let routeFitTimer = null;
+
+    function buildRouteBounds(directionsResult) {
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend(CAMPEZO);
+      TERMINALES.forEach(function(t) {
+        bounds.extend({ lat: t.lat, lng: t.lng });
+      });
+      if (directionsResult && directionsResult.routes[0]) {
+        const route = directionsResult.routes[0];
+        if (route.overview_path) {
+          route.overview_path.forEach(function(point) {
+            bounds.extend(point);
+          });
+        }
+        route.legs.forEach(function(leg) {
+          bounds.extend(leg.start_location);
+          bounds.extend(leg.end_location);
+        });
+      }
+      return bounds;
+    }
+
+    function getMapViewportPadding() {
+      const header = document.querySelector(".map-header");
+      const legend = document.getElementById("legend");
+      return {
+        top: (header ? header.offsetHeight : 56) + 16,
+        right: 28,
+        bottom: (legend ? legend.offsetHeight : 180) + 24,
+        left: 28
+      };
+    }
+
+    function fitRouteViewport(directionsResult) {
+      if (!map) return;
+      if (directionsResult) routeBounds = buildRouteBounds(directionsResult);
+      if (!routeBounds) return;
+      map.fitBounds(routeBounds, getMapViewportPadding());
+    }
+
+    function scheduleFitRouteViewport(directionsResult) {
+      if (routeFitTimer) clearTimeout(routeFitTimer);
+      requestAnimationFrame(function() {
+        fitRouteViewport(directionsResult);
+        if (map) google.maps.event.trigger(map, "resize");
+        routeFitTimer = setTimeout(function() {
+          fitRouteViewport();
+        }, 250);
+      });
+    }
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 40.465, lng: -3.58 },
+        zoom: 11,
+        mapTypeControl: false,
+        fullscreenControl: false,
+        styles: [
+          { featureType: "poi", stylers: [{ visibility: "off" }] },
+          { featureType: "transit", stylers: [{ visibility: "off" }] }
+        ]
+      });
+
+      directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: true,
+        preserveViewport: true,
+        polylineOptions: {
+          strokeColor: "#58a6ff",
+          strokeOpacity: 0.9,
+          strokeWeight: 6,
+          zIndex: 1
+        }
+      });
+
+      const directionsService = new google.maps.DirectionsService();
+      const request = {
+        origin: CAMPEZO_STR,
+        destination: CAMPEZO_STR,
+        waypoints: TERMINALES.map(function(t) { return { location: { lat: t.lat, lng: t.lng }, stopover: true }; }),
+        optimizeWaypoints: false,
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      };
+
+      directionsService.route(request, function(result, status) {
+        if (status === google.maps.DirectionsStatus.OK) {
+          directionsRenderer.setDirections(result);
+          routeLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
+          scheduleFitRouteViewport(result);
+          refreshActiveVehicleEta(directionsService);
+        }
+      });
+
+      window.addEventListener("resize", function() {
+        scheduleFitRouteViewport();
+      });
+
+      function makeStopIcon(letter, color) {
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36"><circle cx="18" cy="18" r="15" fill="' + (color || "#58a6ff") + '" stroke="#fff" stroke-width="2"/><text x="18" y="23" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold" font-family="sans-serif">' + letter + '</text></svg>';
+        return {
+          url: "data:image/svg+xml," + encodeURIComponent(svg),
+          scaledSize: new google.maps.Size(36, 36),
+          anchor: new google.maps.Point(18, 18)
+        };
+      }
+
+      const hotelMarker = new google.maps.Marker({
+        map: map,
+        position: CAMPEZO,
+        title: "Hotel Axor Barajas - Calle Campezo 10",
+        icon: makeStopIcon("H", "#58a6ff")
+      });
+      stopPoints.push({
+        marker: hotelMarker,
+        location: "hotel",
+        title: "Hotel Axor Barajas - Calle Campezo 10",
+        link: null
+      });
+
+      TERMINALES.forEach(function(t, i) {
+        const num = i + 1;
+        const m = new google.maps.Marker({
+          map: map,
+          position: { lat: t.lat, lng: t.lng },
+          title: t.name,
+          icon: makeStopIcon("T" + num, "#388bfd")
+        });
+        stopPoints.push({
+          marker: m,
+          location: "t" + num,
+          title: t.name,
+          link: t.link
+        });
+      });
+
+      socket.on("vehicles", function(vehicles) {
+        lastVehiclesLive = {};
+        vehicleIds.forEach(function(id) { lastVehiclesLive[id] = false; });
+
+        var activeOne = null;
+        for (const [id, v] of Object.entries(vehicles)) {
+          if (v.lastUpdate && !activeOne) activeOne = { id: id, v: v };
+        }
+        if (activeOne) lastVehiclesLive[activeOne.id] = true;
+        activeVehicleIdOnMap = activeOne ? activeOne.id : null;
+        if (!activeOne) lastActiveVehicleEta = null;
+        setVehicleRowActive(activeVehicleIdOnMap);
+
+        var activeId = activeOne ? activeOne.id : null;
+        vehicleIds.forEach(function(id) {
+          var vehicle = vehicles[id];
+          if (!vehicle) return;
+          var label = vehicle.label || id;
+          setPaxForVehicle(id, vehicle.passengers, vehicle.capacity, id === activeId);
+          if (id !== activeId && vehicleMarkers[id]) {
+            vehicleMarkers[id].setMap(null);
+            vehicleMarkers[id] = null;
+          }
+          if (id !== activeId) setEtaForVehicle(id, label, { summary: "—", detail: "" });
+        });
+
+        if (activeOne) {
+          var id = activeOne.id;
+          var v = activeOne.v;
+          var label = v.label || id;
+          lastActiveVehicleEta = { id: id, lat: v.lat, lng: v.lng, label: label };
+          var pos = { lat: v.lat, lng: v.lng };
+          if (vehicleMarkers[id]) {
+            vehicleMarkers[id].setPosition(pos);
+          } else {
+            vehicleMarkers[id] = new google.maps.Marker({
+              map: map,
+              position: pos,
+              title: label,
+              icon: createVehicleIcon(id),
+              zIndex: 100
+            });
+          }
+          setPaxForVehicle(id, v.passengers, v.capacity, true);
+          updateEtaFromGoogle(id, v.lat, v.lng, label, directionsService);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

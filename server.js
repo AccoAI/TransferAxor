@@ -44,6 +44,7 @@ if (process.env.GOOGLE_MAPS_API_KEY) {
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "mapa.html")));
+app.get("/hotel", (req, res) => res.sendFile(path.join(__dirname, "public", "hotel.html")));
 app.get("/conductor", (req, res) => res.sendFile(path.join(__dirname, "public", "conductor.html")));
 app.get("/apuntarse", (req, res) => res.redirect("/"));
 
@@ -202,6 +203,7 @@ io.on("connection", (socket) => {
 server.listen(PORT, HOST, () => {
   console.log(`Transfer Axor: http://localhost:${PORT}`);
   console.log(`  - Cliente (mapa):  http://localhost:${PORT}`);
+  console.log(`  - Hotel (TV):      http://localhost:${PORT}/hotel`);
   console.log(`  - Conductor:       http://localhost:${PORT}/conductor`);
   if (!CONDUCTOR_ACCESS_KEY) {
     console.log("  - Aviso: CONDUCTOR_ACCESS_KEY no definida; el panel de conductor queda abierto.");
