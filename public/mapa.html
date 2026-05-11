@@ -40,22 +40,22 @@
 
   <div class="map-container">
     <div id="map"></div>
-    <div class="legend" id="legend">
+    <div class="legend display-board" id="legend">
       <div class="legend-section">
-        <div class="legend-eta-title">Llegada estimada al hotel (Campezo 10)</div>
-        <div class="legend-item"><span class="legend-dot vito1"></span><span class="legend-label">Vito 1</span><span class="legend-pax" id="pax1"></span><span class="legend-eta" id="eta1"></span></div>
-        <div class="legend-item"><span class="legend-dot vito2"></span><span class="legend-label">Vito 2</span><span class="legend-pax" id="pax2"></span><span class="legend-eta" id="eta2"></span></div>
-        <div class="legend-item"><span class="legend-dot vito3"></span><span class="legend-label">Vito 3</span><span class="legend-pax" id="pax3"></span><span class="legend-eta" id="eta3"></span></div>
-        <div class="legend-item"><span class="legend-dot vito4"></span><span class="legend-label">Vito 4</span><span class="legend-pax" id="pax4"></span><span class="legend-eta" id="eta4"></span></div>
-        <div class="legend-item"><span class="legend-dot minibus"></span><span class="legend-label">Minibús</span><span class="legend-pax" id="pax5"></span><span class="legend-eta" id="eta5"></span></div>
+        <div class="legend-eta-title">Vehículos — tiempos por parada (Hotel → T1 → T2 → T3 → T4 → Hotel)</div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-vito1"><span class="legend-dot vito1"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 1</span><span class="legend-pax" id="pax1"></span><span class="legend-eta" id="eta1"></span></div><div class="legend-vehicle-status" id="status1"></div></div></div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-vito2"><span class="legend-dot vito2"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 2</span><span class="legend-pax" id="pax2"></span><span class="legend-eta" id="eta2"></span></div><div class="legend-vehicle-status" id="status2"></div></div></div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-vito3"><span class="legend-dot vito3"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 3</span><span class="legend-pax" id="pax3"></span><span class="legend-eta" id="eta3"></span></div><div class="legend-vehicle-status" id="status3"></div></div></div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-vito4"><span class="legend-dot vito4"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 4</span><span class="legend-pax" id="pax4"></span><span class="legend-eta" id="eta4"></span></div><div class="legend-vehicle-status" id="status4"></div></div></div>
+        <div class="legend-item legend-vehicle-row" id="vehicle-row-minibus"><span class="legend-dot minibus"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Minibús</span><span class="legend-pax" id="pax5"></span><span class="legend-eta" id="eta5"></span></div><div class="legend-vehicle-status" id="status5"></div></div></div>
       </div>
       <div class="legend-section legend-waiting">
-        <div class="legend-eta-title">Personas esperando</div>
-        <div class="legend-item legend-wait-item"><span class="legend-label">Hotel</span><span class="legend-wait" id="wait-hotel">0</span></div>
-        <div class="legend-item legend-wait-item"><span class="legend-label">T1</span><span class="legend-wait" id="wait-t1">0</span></div>
-        <div class="legend-item legend-wait-item"><span class="legend-label">T2</span><span class="legend-wait" id="wait-t2">0</span></div>
-        <div class="legend-item legend-wait-item"><span class="legend-label">T3</span><span class="legend-wait" id="wait-t3">0</span></div>
-        <div class="legend-item legend-wait-item"><span class="legend-label">T4</span><span class="legend-wait" id="wait-t4">0</span></div>
+        <div class="legend-eta-title">Personas esperando transfer</div>
+        <div class="legend-item legend-wait-item"><span class="legend-label">Hotel Campezo 10</span><span class="legend-wait" id="wait-hotel">0</span></div>
+        <div class="legend-item legend-wait-item"><span class="legend-label">Terminal T1 Salidas</span><span class="legend-wait" id="wait-t1">0</span></div>
+        <div class="legend-item legend-wait-item"><span class="legend-label">Terminal T2 Barajas</span><span class="legend-wait" id="wait-t2">0</span></div>
+        <div class="legend-item legend-wait-item"><span class="legend-label">Terminal T3 Barajas</span><span class="legend-wait" id="wait-t3">0</span></div>
+        <div class="legend-item legend-wait-item"><span class="legend-label">Terminal T4 Barajas</span><span class="legend-wait" id="wait-t4">0</span></div>
       </div>
     </div>
   </div>
@@ -77,11 +77,12 @@
     const colors = { vito1: "#f59e0b", vito2: "#10b981", vito3: "#8b5cf6", vito4: "#ec4899", minibus: "#ef4444" };
     const etaEl = { vito1: "eta1", vito2: "eta2", vito3: "eta3", vito4: "eta4", minibus: "eta5" };
     const paxEl = { vito1: "pax1", vito2: "pax2", vito3: "pax3", vito4: "pax4", minibus: "pax5" };
+    const statusEl = { vito1: "status1", vito2: "status2", vito3: "status3", vito4: "status4", minibus: "status5" };
+    const vehicleRowEl = { vito1: "vehicle-row-vito1", vito2: "vehicle-row-vito2", vito3: "vehicle-row-vito3", vito4: "vehicle-row-vito4", minibus: "vehicle-row-minibus" };
 
     let map;
     let directionsRenderer;
     const vehicleMarkers = {};
-    const vehiclePopupContent = {};
     const vehicleMeta = {};
     const stopPoints = [];
     var lastVehiclesLive = {};
@@ -90,6 +91,7 @@
     // Duraciones de cada tramo del circuito (segundos), rellenado cuando carga la ruta: [Hotel→T1, T1→T2, T2→T3, T3→T4, T4→Hotel]
     let routeLegDurationsSec = null;
     const PARADA_TERMINAL_MIN = 4;
+    const ROUTE_STOP_NAMES = ["T1", "T2", "T3", "T4", "Hotel"];
 
     function distanceKm(lat1, lon1, lat2, lon2) {
       const R = 6371;
@@ -119,6 +121,17 @@
       if (min < 30) return { imminent: false, time: pad(hour) + ":30" };
       hour = (hour + 1) % 24;
       return { imminent: false, time: pad(hour) + ":00" };
+    }
+
+    function getSecondsUntilDeparture() {
+      const now = new Date();
+      const dep = getDepartureDisplay(true);
+      const parts = dep.time.split(":");
+      const target = new Date(now);
+      target.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+      if (target.getTime() < now.getTime()) target.setTime(target.getTime() + 30 * 60 * 1000);
+      if (target.getTime() < now.getTime()) target.setHours(target.getHours() + 1);
+      return Math.max(0, Math.round((target.getTime() - now.getTime()) / 1000));
     }
 
     // Puntos finales de cada tramo: leg 0→T1, 1→T2, 2→T3, 3→T4, 4→Hotel
@@ -155,25 +168,63 @@
       return h + " h " + (m > 0 ? m + " min" : "");
     }
 
+    function computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) return null;
+      const etas = [];
+      const start = currentLeg < 0 ? 0 : currentLeg;
+      for (let s = start; s < 5; s++) {
+        let sec = departureWaitSec || 0;
+        if (currentLeg < 0) {
+          for (let i = 0; i <= s; i++) sec += routeLegDurationsSec[i];
+          sec += s * PARADA_TERMINAL_MIN * 60;
+        } else {
+          sec += remainingOnLegSec;
+          for (let i = currentLeg + 1; i <= s; i++) sec += routeLegDurationsSec[i];
+          sec += (s - currentLeg) * PARADA_TERMINAL_MIN * 60;
+        }
+        etas.push({ name: ROUTE_STOP_NAMES[s], sec: sec, text: formatDurationSec(sec) });
+      }
+      return etas;
+    }
+
+    function formatEtasDisplay(stopEtas, depInfo) {
+      if (!stopEtas || !stopEtas.length) return { summary: "—", detail: "" };
+      const next = stopEtas[0];
+      const summary = "Siguiente: " + next.name + " · " + next.text;
+      const lines = stopEtas.map(function(stop) { return stop.name + ": " + stop.text; });
+      if (depInfo) {
+        lines.unshift((depInfo.imminent ? "Salida inminente " : "Salida ") + depInfo.time);
+      }
+      return { summary: summary, detail: lines.join("\n") };
+    }
+
+    function applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, departureWaitSec, depInfo) {
+      const stopEtas = computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec);
+      const display = formatEtasDisplay(stopEtas, depInfo);
+      setEtaForVehicle(vehicleId, label, display);
+    }
+
     function updateEtaFromGoogle(vehicleId, lat, lng, label, directionsService) {
-      const km = distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng);
-      if (km < 0.15) {
+      const currentLeg = getCurrentLegIndex(lat, lng);
+      if (currentLeg < 0) {
+        if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
+          setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
+          return;
+        }
         const dep = getDepartureDisplay(true);
-        setEtaForVehicle(vehicleId, label, { text: "En hotel", etaTime: null, departureTime: dep.time, departureImminent: dep.imminent });
+        applyRouteEtas(vehicleId, label, -1, 0, getSecondsUntilDeparture(), dep);
         return;
       }
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
-        setEtaForVehicle(vehicleId, label, { text: "Calculando…", etaTime: null });
+        setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
         return;
       }
       const last = lastEtaOrigin[vehicleId];
       if (last && distanceKm(lat, lng, last.lat, last.lng) < ETA_THROTTLE_KM) return;
       lastEtaOrigin[vehicleId] = { lat: lat, lng: lng };
-      setEtaForVehicle(vehicleId, label, { text: "Calculando…", etaTime: null });
+      setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
 
-      const currentLeg = getCurrentLegIndex(lat, lng);
       const endPoint = getEndOfLeg(currentLeg);
-
       directionsService.route({
         origin: { lat: lat, lng: lng },
         destination: endPoint,
@@ -181,24 +232,20 @@
         region: "es"
       }, function(result, status) {
         if (status !== google.maps.DirectionsStatus.OK) {
-          if (vehicleId === activeVehicleIdOnMap) setEtaForVehicle(vehicleId, label, { text: "—", etaTime: null });
+          if (vehicleId === activeVehicleIdOnMap) setEtaForVehicle(vehicleId, label, { summary: "—", detail: "" });
           return;
         }
         if (vehicleId !== activeVehicleIdOnMap) return;
         const remainingOnLegSec = result.routes[0].legs[0].duration.value;
-        let totalSec = remainingOnLegSec;
-        for (let i = currentLeg + 1; i < 5; i++) totalSec += routeLegDurationsSec[i];
-        totalSec += (4 - currentLeg) * PARADA_TERMINAL_MIN * 60;
-        const eta = new Date(Date.now() + totalSec * 1000);
-        const timeStr = eta.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-        setEtaForVehicle(vehicleId, label, { text: formatDurationSec(totalSec), etaTime: timeStr });
+        applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, 0, null);
       });
     }
 
-    function vehiclePaxLine(vehicleId) {
-      const meta = vehicleMeta[vehicleId];
-      if (!meta) return "";
-      return "<br>Pasajeros a bordo: <strong>" + meta.passengers + "/" + meta.capacity + "</strong>";
+    function setVehicleRowActive(vehicleId) {
+      vehicleIds.forEach(function(id) {
+        const row = document.getElementById(vehicleRowEl[id]);
+        if (row) row.classList.toggle("legend-vehicle-row-active", id === vehicleId);
+      });
     }
 
     function setPaxForVehicle(vehicleId, passengers, capacity, isActive) {
@@ -207,22 +254,11 @@
       meta.capacity = capacity || 8;
       vehicleMeta[vehicleId] = meta;
       const paxNode = document.getElementById(paxEl[vehicleId]);
-      if (paxNode) paxNode.textContent = isActive ? (meta.passengers + "/" + meta.capacity) : " —";
+      if (paxNode) paxNode.textContent = isActive ? ("A bordo " + meta.passengers + "/" + meta.capacity) : "A bordo —";
       if (vehicleMarkers[vehicleId]) {
         const label = meta.label || vehicleId;
-        vehicleMarkers[vehicleId].setTitle(label + " · " + meta.passengers + "/" + meta.capacity);
+        vehicleMarkers[vehicleId].setTitle(label + " · A bordo " + meta.passengers + "/" + meta.capacity);
       }
-    }
-
-    function wrapMapPopup(html) {
-      return "<div class=\"map-popup\">" + html + "</div>";
-    }
-
-    function makeStopPopup(title, locationKey, link) {
-      const waiting = waitingCounts[locationKey] || 0;
-      let html = "<b>" + title + "</b><br>Esperando: <strong>" + waiting + "</strong>";
-      if (link) html += "<br><a href=\"" + link + "\" target=\"_blank\" rel=\"noopener\">Abrir en Google Maps</a>";
-      return wrapMapPopup(html);
     }
 
     function updateWaitingDisplay() {
@@ -230,30 +266,20 @@
         const el = document.getElementById("wait-" + key);
         if (el) el.textContent = String(waitingCounts[key] || 0);
       });
+      stopPoints.forEach(function(stop) {
+        const count = waitingCounts[stop.location] || 0;
+        stop.marker.setTitle(stop.title + " · Esperando: " + count);
+      });
     }
 
     function setEtaForVehicle(vehicleId, label, eta) {
       const meta = vehicleMeta[vehicleId] || {};
       meta.label = label;
       vehicleMeta[vehicleId] = meta;
-      let mainText = eta.text;
-      let detail = "";
-      if (eta.departureTime !== undefined) {
-        mainText = "En hotel";
-        if (eta.departureImminent) {
-          detail = " · Salida inminente (" + eta.departureTime + ")";
-        } else {
-          detail = " · Próx. salida " + eta.departureTime;
-        }
-      } else if (eta.etaTime) {
-        detail = " (~" + eta.etaTime + ")";
-      }
-      const salidaLine = eta.departureImminent
-        ? "Salida inminente: <strong>" + eta.departureTime + "</strong>"
-        : (eta.departureTime ? "Próx. salida: <strong>" + eta.departureTime + "</strong>" : "");
-      vehiclePopupContent[vehicleId] = wrapMapPopup("<b>" + label + "</b>" + vehiclePaxLine(vehicleId) + "<br>Llegada al hotel: <strong>" + mainText + (eta.departureTime ? "</strong><br>" + salidaLine : detail ? "</strong>" + detail : "</strong>"));
       const el = document.getElementById(etaEl[vehicleId]);
-      if (el) el.textContent = " " + mainText + (detail || (eta.etaTime ? " (~" + eta.etaTime + ")" : ""));
+      if (el) el.textContent = eta.summary || "—";
+      const statusNode = document.getElementById(statusEl[vehicleId]);
+      if (statusNode) statusNode.textContent = eta.detail || "";
     }
 
     function createVehicleIcon(vehicleId) {
@@ -319,14 +345,6 @@
           anchor: new google.maps.Point(18, 18)
         };
       }
-      function bindStopMarker(marker, stop) {
-        marker.addListener("click", function() {
-          new google.maps.InfoWindow({
-            content: makeStopPopup(stop.title, stop.location, stop.link)
-          }).open(map, marker);
-        });
-      }
-
       const hotelMarker = new google.maps.Marker({
         map: map,
         position: CAMPEZO,
@@ -340,7 +358,6 @@
         link: null
       };
       stopPoints.push(hotelStop);
-      bindStopMarker(hotelMarker, hotelStop);
 
       TERMINALES.forEach(function(t, i) {
         const num = i + 1;
@@ -357,8 +374,9 @@
           link: t.link
         };
         stopPoints.push(stop);
-        bindStopMarker(m, stop);
       });
+
+      updateWaitingDisplay();
 
       const socket = io();
       socket.on("waiting", function(counts) {
@@ -376,6 +394,7 @@
         }
         if (activeOne) lastVehiclesLive[activeOne.id] = true;
         activeVehicleIdOnMap = activeOne ? activeOne.id : null;
+        setVehicleRowActive(activeVehicleIdOnMap);
 
         var activeId = activeOne ? activeOne.id : null;
         vehicleIds.forEach(function(id) {
@@ -387,7 +406,7 @@
             vehicleMarkers[id].setMap(null);
             vehicleMarkers[id] = null;
           }
-          if (id !== activeId) setEtaForVehicle(id, label, { text: "—", etaTime: null });
+          if (id !== activeId) setEtaForVehicle(id, label, { summary: "—", detail: "" });
         });
 
         if (activeOne) {
@@ -405,11 +424,6 @@
               icon: createVehicleIcon(id),
               zIndex: 100
             });
-            (function(vehicleId) {
-              vehicleMarkers[vehicleId].addListener("click", function() {
-                new google.maps.InfoWindow({ content: vehiclePopupContent[vehicleId] || "" }).open(map, vehicleMarkers[vehicleId]);
-              });
-            })(id);
           }
           setPaxForVehicle(id, v.passengers, v.capacity, true);
           updateEtaFromGoogle(id, v.lat, v.lng, label, directionsService);
