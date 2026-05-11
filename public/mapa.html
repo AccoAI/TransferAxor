@@ -42,7 +42,7 @@
     <div id="map"></div>
     <div class="legend display-board" id="legend">
       <div class="legend-section">
-        <div class="legend-eta-title">Vehículos — tiempos por parada (Hotel → T1 → T2 → T3 → T4 → Hotel)</div>
+        <div class="legend-eta-title">Vehículos — llegadas por parada, horario Madrid (Hotel → T1 → T2 → T3 → T4 → Hotel)</div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito1"><span class="legend-dot vito1"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 1</span><span class="legend-pax" id="pax1"></span><span class="legend-eta" id="eta1"></span></div><div class="legend-vehicle-status" id="status1"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito2"><span class="legend-dot vito2"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 2</span><span class="legend-pax" id="pax2"></span><span class="legend-eta" id="eta2"></span></div><div class="legend-vehicle-status" id="status2"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito3"><span class="legend-dot vito3"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 3</span><span class="legend-pax" id="pax3"></span><span class="legend-eta" id="eta3"></span></div><div class="legend-vehicle-status" id="status3"></div></div></div>
@@ -92,6 +92,7 @@
     let routeLegDurationsSec = null;
     const PARADA_TERMINAL_MIN = 4;
     const ROUTE_STOP_NAMES = ["T1", "T2", "T3", "T4", "Hotel"];
+    const MADRID_TZ = "Europe/Madrid";
 
     function distanceKm(lat1, lon1, lat2, lon2) {
       const R = 6371;
@@ -109,29 +110,56 @@
     // Salidas cada 30 min (en punto y en y media).
     // Si atHotel: en los primeros minutos tras :00 o :30 → "salida inminente" a esa hora; si no, próxima salida.
     // Si !atHotel: siempre la próxima salida (ej. a las 10:00 fuera del hotel → 10:30).
+    function pad2(n) {
+      return (n < 10 ? "0" : "") + n;
+    }
+
+    function madridClockParts(date) {
+      const parts = new Intl.DateTimeFormat("es-ES", {
+        timeZone: MADRID_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).formatToParts(date || new Date());
+      const pick = function(type) {
+        return parseInt(parts.find(function(p) { return p.type === type; }).value, 10);
+      };
+      return { hour: pick("hour"), minute: pick("minute") };
+    }
+
+    function formatArrivalTimeMadrid(secondsFromNow) {
+      return new Date(Date.now() + secondsFromNow * 1000).toLocaleTimeString("es-ES", {
+        timeZone: MADRID_TZ,
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
     function getDepartureDisplay(atHotel) {
-      const now = new Date();
-      const min = now.getMinutes();
-      let hour = now.getHours();
-      const pad = function(h) { return (h < 10 ? "0" : "") + h; };
+      const clock = madridClockParts(new Date());
+      const hour = clock.hour;
+      const min = clock.minute;
       if (atHotel) {
-        if (min < 5) return { imminent: true, time: pad(hour) + ":00" };
-        if (min >= 30 && min < 35) return { imminent: true, time: pad(hour) + ":30" };
+        if (min < 5) return { imminent: true, time: pad2(hour) + ":00" };
+        if (min >= 30 && min < 35) return { imminent: true, time: pad2(hour) + ":30" };
       }
-      if (min < 30) return { imminent: false, time: pad(hour) + ":30" };
-      hour = (hour + 1) % 24;
-      return { imminent: false, time: pad(hour) + ":00" };
+      if (min < 30) return { imminent: false, time: pad2(hour) + ":30" };
+      return { imminent: false, time: pad2((hour + 1) % 24) + ":00" };
     }
 
     function getSecondsUntilDeparture() {
-      const now = new Date();
       const dep = getDepartureDisplay(true);
-      const parts = dep.time.split(":");
-      const target = new Date(now);
-      target.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
-      if (target.getTime() < now.getTime()) target.setTime(target.getTime() + 30 * 60 * 1000);
-      if (target.getTime() < now.getTime()) target.setHours(target.getHours() + 1);
-      return Math.max(0, Math.round((target.getTime() - now.getTime()) / 1000));
+      if (dep.imminent) return 0;
+      const target = dep.time.split(":").map(Number);
+      const now = Date.now();
+      for (let delta = 0; delta <= 24 * 3600 * 1000; delta += 1000) {
+        const instant = new Date(now + delta);
+        const clock = madridClockParts(instant);
+        if (clock.hour === target[0] && clock.minute === target[1]) {
+          return Math.max(0, Math.round(delta / 1000));
+        }
+      }
+      return 0;
     }
 
     // Puntos finales de cada tramo: leg 0→T1, 1→T2, 2→T3, 3→T4, 4→Hotel
@@ -159,15 +187,6 @@
       return d[2] <= distToHotel ? 3 : 4;
     }
 
-    function formatDurationSec(sec) {
-      if (sec < 60) return "1 min";
-      const min = Math.round(sec / 60);
-      if (min < 60) return min + " min";
-      const h = Math.floor(min / 60);
-      const m = min % 60;
-      return h + " h " + (m > 0 ? m + " min" : "");
-    }
-
     function computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec) {
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) return null;
       const etas = [];
@@ -182,7 +201,7 @@
           for (let i = currentLeg + 1; i <= s; i++) sec += routeLegDurationsSec[i];
           sec += (s - currentLeg) * PARADA_TERMINAL_MIN * 60;
         }
-        etas.push({ name: ROUTE_STOP_NAMES[s], sec: sec, text: formatDurationSec(sec) });
+        etas.push({ name: ROUTE_STOP_NAMES[s], sec: sec, text: formatArrivalTimeMadrid(sec) });
       }
       return etas;
     }
@@ -190,7 +209,7 @@
     function formatEtasDisplay(stopEtas, depInfo) {
       if (!stopEtas || !stopEtas.length) return { summary: "—", detail: "" };
       const next = stopEtas[0];
-      const summary = "Siguiente: " + next.name + " · " + next.text;
+      const summary = "Siguiente: " + next.name + " · llegada " + next.text;
       const lines = stopEtas.map(function(stop) { return stop.name + ": " + stop.text; });
       if (depInfo) {
         lines.unshift((depInfo.imminent ? "Salida inminente " : "Salida ") + depInfo.time);
