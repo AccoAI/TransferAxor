@@ -54,7 +54,12 @@
 
   <div class="map-container">
     <div id="map"></div>
-    <div class="legend display-board" id="legend">
+    <div class="legend display-board legend-sheet" id="legend">
+      <button type="button" class="legend-sheet-head" id="legendToggle" aria-expanded="false" aria-controls="legendBody">
+        <span class="legend-sheet-handle" aria-hidden="true"></span>
+        <span class="legend-sheet-compact" id="legendCompact">Calculando…</span>
+      </button>
+      <div class="legend-sheet-body" id="legendBody">
       <div class="legend-section">
         <div class="legend-eta-title">Vehículos — llegadas por parada, horario Madrid (Hotel → T1 → T2 → T3 → T4 → Hotel)</div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito1"><span class="legend-dot vito1"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 1</span><span class="legend-pax" id="pax1"></span><span class="legend-eta" id="eta1"></span></div><div class="legend-vehicle-status" id="status1"></div></div></div>
@@ -62,6 +67,7 @@
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito3"><span class="legend-dot vito3"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 3</span><span class="legend-pax" id="pax3"></span><span class="legend-eta" id="eta3"></span></div><div class="legend-vehicle-status" id="status3"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito4"><span class="legend-dot vito4"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito 4</span><span class="legend-pax" id="pax4"></span><span class="legend-eta" id="eta4"></span></div><div class="legend-vehicle-status" id="status4"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-minibus"><span class="legend-dot minibus"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Minibús</span><span class="legend-pax" id="pax5"></span><span class="legend-eta" id="eta5"></span></div><div class="legend-vehicle-status" id="status5"></div></div></div>
+      </div>
       </div>
     </div>
   </div>
@@ -92,6 +98,13 @@
       t3: "Terminal T3",
       t4: "Terminal T4"
     };
+    const LOCATION_TO_ROUTE_STOP = {
+      hotel: "Hotel",
+      t1: "T1",
+      t2: "T2",
+      t3: "T3",
+      t4: "T4"
+    };
     const MAX_SIGNUP_PEOPLE = 15;
 
     const socket = io();
@@ -101,6 +114,9 @@
     const partyPlusEl = document.getElementById("partyPlus");
     const cancelSignupBtnEl = document.getElementById("cancelSignupBtn");
     const signupStatusEl = document.getElementById("signupStatus");
+    const legendEl = document.getElementById("legend");
+    const legendToggleEl = document.getElementById("legendToggle");
+    const legendCompactEl = document.getElementById("legendCompact");
     let partyCount = 1;
     let signedUp = false;
     let selectedLocation = null;
@@ -160,6 +176,7 @@
         setSelectedLocation(null);
         updateSignupStatus(null, 0);
       }
+      updateLegendCompact();
     }
 
     partyMinusEl.addEventListener("click", function() {
@@ -194,6 +211,63 @@
     });
 
     updatePartyControls();
+
+    function setLegendSheetExpanded(open) {
+      if (!legendEl || !legendToggleEl) return;
+      legendEl.classList.toggle("legend-sheet-expanded", open);
+      legendToggleEl.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    if (legendToggleEl && legendEl) {
+      legendToggleEl.addEventListener("click", function() {
+        setLegendSheetExpanded(!legendEl.classList.contains("legend-sheet-expanded"));
+      });
+    }
+
+    function formatMinutesDelta(seconds) {
+      if (!Number.isFinite(seconds)) return "—";
+      if (seconds <= 0) return "ahora";
+      const minutes = Math.max(1, Math.round(seconds / 60));
+      return minutes + " min";
+    }
+
+    function getDestinationStopName() {
+      if (signedUp && selectedLocation) return LOCATION_TO_ROUTE_STOP[selectedLocation] || null;
+      return null;
+    }
+
+    function getStopEtaSecondsRemaining(meta, stopName) {
+      if (!meta || !meta.stopEtas || !meta.stopEtas.length) return null;
+      const hit = meta.stopEtas.find(function(stop) { return stop.name === stopName; });
+      if (!hit) return null;
+      const elapsed = (Date.now() - (meta.stopEtasAt || Date.now())) / 1000;
+      return Math.max(0, hit.sec - elapsed);
+    }
+
+    function updateLegendCompact() {
+      if (!legendCompactEl) return;
+      const destination = getDestinationStopName();
+      const vehicleId = activeVehicleIdOnMap;
+      if (!destination) {
+        legendCompactEl.textContent = "Apúntate para ver tu llegada";
+        return;
+      }
+      if (!vehicleId) {
+        legendCompactEl.textContent = "Sin transfer activo";
+        return;
+      }
+      const meta = vehicleMeta[vehicleId] || {};
+      const remaining = getStopEtaSecondsRemaining(meta, destination);
+      if (remaining === null) {
+        legendCompactEl.textContent = "Calculando…";
+        return;
+      }
+      const label = SIGNUP_LABELS[selectedLocation] || destination;
+      const vehicleLabel = meta.label || vehicleId;
+      legendCompactEl.textContent = vehicleLabel + " · " + label + " en " + formatMinutesDelta(remaining);
+    }
+
+    setInterval(updateLegendCompact, 30000);
 
     let map;
     let directionsRenderer;
@@ -333,6 +407,10 @@
 
     function applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, departureWaitSec, depInfo) {
       const stopEtas = computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec);
+      const meta = vehicleMeta[vehicleId] || {};
+      meta.stopEtas = stopEtas;
+      meta.stopEtasAt = Date.now();
+      vehicleMeta[vehicleId] = meta;
       const display = formatEtasDisplay(stopEtas, depInfo);
       setEtaForVehicle(vehicleId, label, display);
     }
@@ -379,6 +457,7 @@
         const row = document.getElementById(vehicleRowEl[id]);
         if (row) row.classList.toggle("legend-vehicle-row-active", id === vehicleId);
       });
+      updateLegendCompact();
     }
 
     function setPaxForVehicle(vehicleId, passengers, capacity, isActive) {
@@ -397,11 +476,16 @@
     function setEtaForVehicle(vehicleId, label, eta) {
       const meta = vehicleMeta[vehicleId] || {};
       meta.label = label;
+      if (!eta.detail) {
+        meta.stopEtas = null;
+        meta.stopEtasAt = null;
+      }
       vehicleMeta[vehicleId] = meta;
       const el = document.getElementById(etaEl[vehicleId]);
       if (el) el.textContent = eta.summary || "—";
       const statusNode = document.getElementById(statusEl[vehicleId]);
       if (statusNode) statusNode.textContent = eta.detail || "";
+      if (vehicleId === activeVehicleIdOnMap) updateLegendCompact();
     }
 
     function createVehicleIcon(vehicleId) {
