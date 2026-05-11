@@ -216,6 +216,7 @@
       if (!legendEl || !legendToggleEl) return;
       legendEl.classList.toggle("legend-sheet-expanded", open);
       legendToggleEl.setAttribute("aria-expanded", open ? "true" : "false");
+      scheduleFitRouteViewport();
     }
 
     if (legendToggleEl && legendEl) {
@@ -500,6 +501,60 @@
       };
     }
 
+    let routeBounds = null;
+    let routeFitTimer = null;
+
+    function buildRouteBounds(directionsResult) {
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend(CAMPEZO);
+      TERMINALES.forEach(function(t) {
+        bounds.extend({ lat: t.lat, lng: t.lng });
+      });
+      if (directionsResult && directionsResult.routes[0]) {
+        const route = directionsResult.routes[0];
+        if (route.overview_path) {
+          route.overview_path.forEach(function(point) {
+            bounds.extend(point);
+          });
+        }
+        route.legs.forEach(function(leg) {
+          bounds.extend(leg.start_location);
+          bounds.extend(leg.end_location);
+        });
+      }
+      return bounds;
+    }
+
+    function getMapViewportPadding() {
+      const header = document.querySelector(".map-header");
+      const signup = document.getElementById("clientSignup");
+      const legend = document.getElementById("legend");
+      return {
+        top: (header ? header.offsetHeight : 48) + (signup ? signup.offsetHeight : 112) + 20,
+        right: 28,
+        bottom: (legend ? legend.offsetHeight : 84) + 36,
+        left: 28
+      };
+    }
+
+    function fitRouteViewport(directionsResult) {
+      if (!map) return;
+      if (directionsResult) routeBounds = buildRouteBounds(directionsResult);
+      if (!routeBounds) return;
+      map.fitBounds(routeBounds, getMapViewportPadding());
+    }
+
+    function scheduleFitRouteViewport(directionsResult) {
+      if (routeFitTimer) clearTimeout(routeFitTimer);
+      requestAnimationFrame(function() {
+        fitRouteViewport(directionsResult);
+        if (map) google.maps.event.trigger(map, "resize");
+        routeFitTimer = setTimeout(function() {
+          fitRouteViewport();
+        }, 250);
+      });
+    }
+
     function initMap() {
       map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: 40.465, lng: -3.58 },
@@ -515,7 +570,7 @@
       directionsRenderer = new google.maps.DirectionsRenderer({
         map: map,
         suppressMarkers: true,
-        preserveViewport: false
+        preserveViewport: true
       });
 
       // Ruta circular: Campezo 10 → T1 → T2 → T3 → T4 → Campezo 10 (por carretera)
@@ -533,13 +588,12 @@
         if (status === google.maps.DirectionsStatus.OK) {
           directionsRenderer.setDirections(result);
           routeLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
-          const bounds = new google.maps.LatLngBounds();
-          result.routes[0].legs.forEach(function(leg) {
-            bounds.extend(leg.start_location);
-            bounds.extend(leg.end_location);
-          });
-          map.fitBounds(bounds, 40);
+          scheduleFitRouteViewport(result);
         }
+      });
+
+      window.addEventListener("resize", function() {
+        scheduleFitRouteViewport();
       });
 
       // Icono visible para paradas: círculo con letra (hotel H, terminales T1–T4)
