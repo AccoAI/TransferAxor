@@ -177,6 +177,8 @@
         updateSignupStatus(null, 0);
       }
       updateLegendCompact();
+      lastPickupRouteOrigin = null;
+      refreshPickupRoute();
     }
 
     partyMinusEl.addEventListener("click", function() {
@@ -302,6 +304,10 @@
 
     let map;
     let directionsRenderer;
+    let pickupDirectionsRenderer = null;
+    let directionsServiceInstance = null;
+    let lastPickupRouteOrigin = null;
+    const PICKUP_ROUTE_THROTTLE_KM = 0.25;
     const vehicleMarkers = {};
     const vehicleMeta = {};
     const stopPoints = [];
@@ -380,6 +386,117 @@
         }
       }
       return 0;
+    }
+
+    function locationKeyToStopIndex(locationKey) {
+      if (locationKey === "hotel") return 4;
+      const indexByLocation = { t1: 0, t2: 1, t3: 2, t4: 3 };
+      return indexByLocation[locationKey] !== undefined ? indexByLocation[locationKey] : null;
+    }
+
+    function getStopLatLng(stopIndex) {
+      if (stopIndex === 4) return { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
+      return { lat: TERMINALES[stopIndex].lat, lng: TERMINALES[stopIndex].lng };
+    }
+
+    function getSignupDestinationPosition() {
+      if (!signedUp || !selectedLocation) return null;
+      const stopIndex = locationKeyToStopIndex(selectedLocation);
+      if (stopIndex === null) return null;
+      return getStopLatLng(stopIndex);
+    }
+
+    function buildCircuitWaypoints(currentLeg, destinationStopIndex) {
+      const waypoints = [];
+      if (currentLeg < 0) {
+        for (let i = 0; i < destinationStopIndex; i++) {
+          waypoints.push({ location: getStopLatLng(i), stopover: true });
+        }
+        return waypoints;
+      }
+      if (destinationStopIndex > currentLeg) {
+        for (let i = currentLeg; i < destinationStopIndex; i++) {
+          waypoints.push({ location: getStopLatLng(i), stopover: true });
+        }
+        return waypoints;
+      }
+      if (destinationStopIndex < currentLeg) {
+        for (let i = currentLeg; i <= 4; i++) {
+          waypoints.push({ location: getStopLatLng(i), stopover: true });
+        }
+        for (let i = 0; i < destinationStopIndex; i++) {
+          waypoints.push({ location: getStopLatLng(i), stopover: true });
+        }
+      }
+      return waypoints;
+    }
+
+    function clearPickupRoute() {
+      if (pickupDirectionsRenderer) pickupDirectionsRenderer.setMap(null);
+      lastPickupRouteOrigin = null;
+    }
+
+    function updatePickupRoute(lat, lng, directionsService) {
+      const destination = getSignupDestinationPosition();
+      if (!destination || !signedUp || !directionsService || !map) {
+        clearPickupRoute();
+        return;
+      }
+      const routeKey = selectedLocation;
+      const last = lastPickupRouteOrigin;
+      if (last && last.key === routeKey && distanceKm(lat, lng, last.lat, last.lng) < PICKUP_ROUTE_THROTTLE_KM) return;
+
+      const currentLeg = getCurrentLegIndex(lat, lng);
+      const destinationStopIndex = locationKeyToStopIndex(selectedLocation);
+      if (destinationStopIndex === null) {
+        clearPickupRoute();
+        return;
+      }
+      const waypoints = buildCircuitWaypoints(currentLeg, destinationStopIndex);
+      lastPickupRouteOrigin = { lat: lat, lng: lng, key: routeKey };
+
+      directionsService.route({
+        origin: { lat: lat, lng: lng },
+        destination: destination,
+        waypoints: waypoints,
+        optimizeWaypoints: false,
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      }, function(result, status) {
+        if (status !== google.maps.DirectionsStatus.OK) {
+          clearPickupRoute();
+          return;
+        }
+        if (!signedUp || selectedLocation !== routeKey) return;
+        if (!pickupDirectionsRenderer) {
+          pickupDirectionsRenderer = new google.maps.DirectionsRenderer({
+            map: map,
+            suppressMarkers: true,
+            preserveViewport: true,
+            polylineOptions: {
+              strokeColor: "#0b3d91",
+              strokeOpacity: 0.95,
+              strokeWeight: 7,
+              zIndex: 3
+            }
+          });
+        } else {
+          pickupDirectionsRenderer.setMap(map);
+        }
+        pickupDirectionsRenderer.setDirections(result);
+      });
+    }
+
+    function refreshPickupRoute() {
+      if (!lastActiveVehicleEta || !directionsServiceInstance) {
+        clearPickupRoute();
+        return;
+      }
+      updatePickupRoute(
+        lastActiveVehicleEta.lat,
+        lastActiveVehicleEta.lng,
+        directionsServiceInstance
+      );
     }
 
     // Puntos finales de cada tramo: leg 0→T1, 1→T2, 2→T3, 3→T4, 4→Hotel
@@ -621,11 +738,18 @@
       directionsRenderer = new google.maps.DirectionsRenderer({
         map: map,
         suppressMarkers: true,
-        preserveViewport: true
+        preserveViewport: true,
+        polylineOptions: {
+          strokeColor: "#6a8fc7",
+          strokeOpacity: 0.35,
+          strokeWeight: 4,
+          zIndex: 1
+        }
       });
 
       // Ruta circular: Campezo 10 → T1 → T2 → T3 → T4 → Campezo 10 (por carretera)
       const directionsService = new google.maps.DirectionsService();
+      directionsServiceInstance = directionsService;
       const request = {
         origin: CAMPEZO_STR,
         destination: CAMPEZO_STR,
@@ -641,6 +765,7 @@
           routeLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
           scheduleFitRouteViewport(result);
           refreshActiveVehicleEta(directionsService);
+          refreshPickupRoute();
           updateLegendCompact();
         }
       });
@@ -699,7 +824,10 @@
         }
         if (activeOne) lastVehiclesLive[activeOne.id] = true;
         activeVehicleIdOnMap = activeOne ? activeOne.id : null;
-        if (!activeOne) lastActiveVehicleEta = null;
+        if (!activeOne) {
+          lastActiveVehicleEta = null;
+          clearPickupRoute();
+        }
         setVehicleRowActive(activeVehicleIdOnMap);
 
         var activeId = activeOne ? activeOne.id : null;
@@ -734,6 +862,7 @@
           }
           setPaxForVehicle(id, v.passengers, v.capacity, true);
           updateEtaFromGoogle(id, v.lat, v.lng, label, directionsService);
+          updatePickupRoute(v.lat, v.lng, directionsService);
         }
       });
     }
