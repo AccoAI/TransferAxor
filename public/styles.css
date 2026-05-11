@@ -414,7 +414,18 @@ body {
   color: var(--green);
 }
 
-.client-schedule-toggle,
+.client-schedule-open {
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
 .client-schedule-save {
   padding: 0.45rem 0.75rem;
   border-radius: 8px;
@@ -425,11 +436,62 @@ body {
   color: var(--text);
 }
 
-.client-schedule {
-  flex: 1 1 100%;
+.client-schedule-dialog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0;
+  width: min(22rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - 2rem);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.client-schedule-dialog::backdrop {
+  background: rgba(8, 12, 18, 0.65);
+}
+
+.client-schedule-dialog-inner {
   display: grid;
   gap: 0.45rem;
-  padding: 0.55rem 0;
+  padding: 0.85rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.client-schedule-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.client-schedule-dialog-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.client-schedule-close {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.client-schedule-panel {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.client-schedule-dialog-status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--red);
 }
 
 .client-schedule-modes {
@@ -487,7 +549,7 @@ body {
 
 .client-schedule-status {
   flex: 1 1 100%;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--accent);
 }
 

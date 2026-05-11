@@ -49,9 +49,18 @@
       <button type="button" class="client-signup-step" id="partyPlus" aria-label="Añadir persona">+</button>
     </div>
     <button type="button" class="client-signup-cancel" id="cancelSignupBtn" hidden>Cancelar</button>
+    <button type="button" class="client-schedule-open" id="scheduleToggleBtn" aria-haspopup="dialog" aria-controls="scheduleDialog">Programar</button>
     <span class="client-signup-status" id="signupStatus"></span>
-    <button type="button" class="client-schedule-toggle" id="scheduleToggleBtn" aria-expanded="false" aria-controls="schedulePanel">Programar viaje</button>
-    <div class="client-schedule" id="schedulePanel" hidden>
+    <span class="client-schedule-status" id="scheduleStatus"></span>
+  </section>
+
+  <dialog class="client-schedule-dialog" id="scheduleDialog">
+    <div class="client-schedule-dialog-inner">
+      <div class="client-schedule-dialog-head">
+        <h2>Programar viaje</h2>
+        <button type="button" class="client-schedule-close" id="scheduleCloseBtn" aria-label="Cerrar">×</button>
+      </div>
+      <div class="client-schedule-panel" id="schedulePanel">
       <div class="client-schedule-modes" role="tablist" aria-label="Tipo de programación">
         <button type="button" class="client-schedule-mode active" data-mode="datetime">Día y hora</button>
         <button type="button" class="client-schedule-mode" data-mode="flight">Código de vuelo</button>
@@ -77,13 +86,14 @@
       </div>
       <label class="client-schedule-label" for="schedulePeople">Personas</label>
       <input type="number" id="schedulePeople" class="client-schedule-input" min="1" max="15" step="1" inputmode="numeric" value="1">
+      <p class="client-schedule-dialog-status" id="scheduleDialogStatus"></p>
       <div class="client-schedule-actions">
         <button type="button" class="client-schedule-save" id="scheduleSaveBtn">Guardar viaje</button>
         <button type="button" class="client-schedule-cancel" id="scheduleCancelBtn" hidden>Cancelar viaje</button>
       </div>
+      </div>
     </div>
-    <span class="client-schedule-status" id="scheduleStatus"></span>
-  </section>
+  </dialog>
 
   <div class="map-container">
     <div id="map"></div>
@@ -248,7 +258,9 @@
     updatePartyControls();
 
     const scheduleToggleBtnEl = document.getElementById("scheduleToggleBtn");
-    const schedulePanelEl = document.getElementById("schedulePanel");
+    const scheduleDialogEl = document.getElementById("scheduleDialog");
+    const scheduleCloseBtnEl = document.getElementById("scheduleCloseBtn");
+    const scheduleDialogStatusEl = document.getElementById("scheduleDialogStatus");
     const scheduleModeEls = document.querySelectorAll(".client-schedule-mode");
     const scheduleLocationEl = document.getElementById("scheduleLocation");
     const scheduleDateEl = document.getElementById("scheduleDate");
@@ -281,10 +293,22 @@
       return date.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
     }
 
-    function setSchedulePanelOpen(open) {
-      if (!schedulePanelEl || !scheduleToggleBtnEl) return;
-      schedulePanelEl.hidden = !open;
-      scheduleToggleBtnEl.setAttribute("aria-expanded", open ? "true" : "false");
+    function clearScheduleDialogStatus() {
+      if (scheduleDialogStatusEl) scheduleDialogStatusEl.textContent = "";
+    }
+
+    function openScheduleDialog() {
+      if (!scheduleDialogEl) return;
+      clearScheduleDialogStatus();
+      if (scheduleLocationEl && selectedLocation) scheduleLocationEl.value = selectedLocation;
+      if (schedulePeopleEl) schedulePeopleEl.value = String(partyCount);
+      if (typeof scheduleDialogEl.showModal === "function") scheduleDialogEl.showModal();
+    }
+
+    function closeScheduleDialog() {
+      if (!scheduleDialogEl) return;
+      clearScheduleDialogStatus();
+      if (scheduleDialogEl.open) scheduleDialogEl.close();
     }
 
     function setScheduleMode(mode) {
@@ -304,11 +328,11 @@
       }
       const label = SIGNUP_LABELS[trip.location] || trip.location;
       if (trip.mode === "flight" && trip.flightCode) {
-        scheduleStatusEl.textContent = "Viaje programado: " + label + " · vuelo " + trip.flightCode + " · " + trip.people + " pers.";
+        scheduleStatusEl.textContent = "Programado: " + label + " · " + trip.flightCode;
         return;
       }
       if (trip.departureDate && trip.departureTime) {
-        scheduleStatusEl.textContent = "Viaje programado: " + label + " · " + formatScheduleDateLabel(trip.departureDate) + " " + trip.departureTime + " · " + trip.people + " pers.";
+        scheduleStatusEl.textContent = "Programado: " + label + " · " + formatScheduleDateLabel(trip.departureDate) + " " + trip.departureTime;
         return;
       }
       scheduleStatusEl.textContent = "Viaje programado";
@@ -317,17 +341,18 @@
     function setTripScheduled(active, trip) {
       tripScheduled = active;
       if (scheduleCancelBtnEl) scheduleCancelBtnEl.hidden = !active;
-      if (active) setSchedulePanelOpen(false);
+      if (active) closeScheduleDialog();
       updateScheduleStatus(active ? trip : null);
     }
 
     function showScheduleError(code) {
-      if (!scheduleStatusEl) return;
-      if (code === "invalid-location") scheduleStatusEl.textContent = "Elige desde dónde sales";
-      else if (code === "invalid-flight") scheduleStatusEl.textContent = "Indica un código de vuelo válido";
-      else if (code === "invalid-datetime") scheduleStatusEl.textContent = "Indica día y hora de salida";
-      else if (code === "past-datetime") scheduleStatusEl.textContent = "La salida debe ser en el futuro";
-      else scheduleStatusEl.textContent = "No se pudo guardar el viaje";
+      const target = scheduleDialogStatusEl || scheduleStatusEl;
+      if (!target) return;
+      if (code === "invalid-location") target.textContent = "Elige desde dónde sales";
+      else if (code === "invalid-flight") target.textContent = "Indica un código de vuelo válido";
+      else if (code === "invalid-datetime") target.textContent = "Indica día y hora de salida";
+      else if (code === "past-datetime") target.textContent = "La salida debe ser en el futuro";
+      else target.textContent = "No se pudo guardar el viaje";
     }
 
     function saveScheduledTrip() {
@@ -355,13 +380,17 @@
     }
 
     if (scheduleToggleBtnEl) {
-      scheduleToggleBtnEl.addEventListener("click", function() {
-        const open = schedulePanelEl && schedulePanelEl.hidden;
-        setSchedulePanelOpen(open);
-        if (open) {
-          if (scheduleLocationEl && selectedLocation) scheduleLocationEl.value = selectedLocation;
-          if (schedulePeopleEl) schedulePeopleEl.value = String(partyCount);
-        }
+      scheduleToggleBtnEl.addEventListener("click", openScheduleDialog);
+    }
+
+    if (scheduleCloseBtnEl) {
+      scheduleCloseBtnEl.addEventListener("click", closeScheduleDialog);
+    }
+
+    if (scheduleDialogEl) {
+      scheduleDialogEl.addEventListener("cancel", function(event) {
+        event.preventDefault();
+        closeScheduleDialog();
       });
     }
 
