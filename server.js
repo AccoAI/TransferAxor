@@ -14,6 +14,8 @@ const io = new Server(server);
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
+const CONDUCTOR_ACCESS_KEY = process.env.CONDUCTOR_ACCESS_KEY || "";
+const MAX_SIGNUP_PEOPLE = 15;
 
 const CAMPEZO_DEFAULT = { lat: 40.447914, lng: -3.583004 };
 const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t3", "t4"];
@@ -43,7 +45,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "mapa.html")));
 app.get("/conductor", (req, res) => res.sendFile(path.join(__dirname, "public", "conductor.html")));
-app.get("/apuntarse", (req, res) => res.sendFile(path.join(__dirname, "public", "apuntarse.html")));
+app.get("/apuntarse", (req, res) => res.redirect("/"));
 
 function emptyWaitingCounts() {
   return { hotel: 0, t1: 0, t2: 0, t3: 0, t4: 0 };
@@ -52,7 +54,9 @@ function emptyWaitingCounts() {
 function getWaitingCounts() {
   const counts = emptyWaitingCounts();
   for (const signup of signups.values()) {
-    if (counts[signup.location] !== undefined) counts[signup.location]++;
+    if (counts[signup.location] !== undefined) {
+      counts[signup.location] += signup.people || 1;
+    }
   }
   return counts;
 }
@@ -81,9 +85,13 @@ function getVehiclesForClients() {
   return out;
 }
 
+function emitWaitingToConductors() {
+  io.to("conductors").emit("waiting", getWaitingCounts());
+}
+
 function broadcastState() {
   io.emit("vehicles", getVehiclesForClients());
-  io.emit("waiting", getWaitingCounts());
+  emitWaitingToConductors();
 }
 
 function removeSignup(socketId) {
@@ -96,12 +104,39 @@ function clampPassengers(count, capacity) {
   return Math.max(0, Math.min(capacity, Math.round(n)));
 }
 
+function clampSignupPeople(count) {
+  const n = Number(count);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(MAX_SIGNUP_PEOPLE, Math.round(n)));
+}
+
+function isConductorAuthorized(token) {
+  if (!CONDUCTOR_ACCESS_KEY) return true;
+  return token === CONDUCTOR_ACCESS_KEY;
+}
+
 io.on("connection", (socket) => {
   socket.emit("vehicles", getVehiclesForClients());
-  socket.emit("waiting", getWaitingCounts());
 
   const existingSignup = signups.get(socket.id);
-  if (existingSignup) socket.emit("signup-status", { location: existingSignup.location });
+  if (existingSignup) {
+    socket.emit("signup-status", {
+      location: existingSignup.location,
+      people: existingSignup.people || 1,
+    });
+  }
+
+  socket.on("conductor-auth", (data) => {
+    const token = data && data.token;
+    if (!isConductorAuthorized(token)) {
+      socket.emit("conductor-auth-fail");
+      return;
+    }
+    socket.join("conductors");
+    socket.data.isConductor = true;
+    socket.emit("conductor-auth-ok");
+    socket.emit("waiting", getWaitingCounts());
+  });
 
   socket.on("register", (data) => {
     const vehicleId = data && data.vehicleId;
@@ -139,14 +174,15 @@ io.on("connection", (socket) => {
   socket.on("signup", (data) => {
     const location = data && data.location;
     if (!WAITING_LOCATIONS.includes(location)) return;
-    signups.set(socket.id, { location });
-    socket.emit("signup-status", { location });
+    const people = clampSignupPeople(data && data.people);
+    signups.set(socket.id, { location, people });
+    socket.emit("signup-status", { location, people });
     broadcastState();
   });
 
   socket.on("cancel-signup", () => {
     removeSignup(socket.id);
-    socket.emit("signup-status", { location: null });
+    socket.emit("signup-status", { location: null, people: 0 });
   });
 
   socket.on("disconnect", () => {
@@ -165,7 +201,9 @@ io.on("connection", (socket) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Transfer Axor: http://localhost:${PORT}`);
-  console.log(`  - Mapa (pantalla principal): http://localhost:${PORT}`);
-  console.log(`  - Conductor (móvil):         http://localhost:${PORT}/conductor`);
-  console.log(`  - Apuntarse (pasajeros):     http://localhost:${PORT}/apuntarse`);
+  console.log(`  - Cliente (mapa):  http://localhost:${PORT}`);
+  console.log(`  - Conductor:       http://localhost:${PORT}/conductor`);
+  if (!CONDUCTOR_ACCESS_KEY) {
+    console.log("  - Aviso: CONDUCTOR_ACCESS_KEY no definida; el panel de conductor queda abierto.");
+  }
 });

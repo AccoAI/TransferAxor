@@ -58,11 +58,81 @@ body {
   margin: 0;
 }
 
+.conductor-auth {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.conductor-auth label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.conductor-auth input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.conductor-auth-btn {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+  background: rgba(56, 139, 253, 0.18);
+  color: var(--text);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.conductor-auth-error {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--red);
+}
+
 .conductor-main {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.25rem;
+}
+
+.conductor-waiting {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.conductor-waiting h2 {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.conductor-wait-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.conductor-wait-row strong {
+  color: var(--accent);
+  font-size: 1rem;
 }
 
 .vehicle-select label {
@@ -190,6 +260,91 @@ body {
   color: var(--accent);
   font-size: 0.7rem;
   text-decoration: none;
+}
+
+.client-signup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.6rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.client-signup-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.client-signup-select {
+  min-width: 9.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.client-signup-party {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.client-signup-party-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.client-signup-step {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.client-signup-step:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.client-signup-count {
+  min-width: 1.25rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.client-signup-btn,
+.client-signup-cancel {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.client-signup-btn {
+  border: 1px solid var(--accent-dim);
+  background: rgba(56, 139, 253, 0.18);
+  color: var(--text);
+}
+
+.client-signup-cancel {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.client-signup-status {
+  flex: 1 1 100%;
+  font-size: 0.8rem;
+  color: var(--green);
 }
 
 .map-container {

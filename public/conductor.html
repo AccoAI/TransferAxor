@@ -15,7 +15,14 @@
     </div>
   </header>
 
-  <main class="conductor-main" id="conductor-main" data-current-vehicle="">
+  <section class="conductor-auth" id="conductorAuth">
+    <label for="conductorKey">Clave de acceso</label>
+    <input type="password" id="conductorKey" autocomplete="off" inputmode="text" placeholder="Clave del conductor">
+    <button type="button" class="conductor-auth-btn" id="conductorAuthBtn">Entrar</button>
+    <p class="conductor-auth-error" id="conductorAuthError" hidden>Clave incorrecta</p>
+  </section>
+
+  <main class="conductor-main" id="conductor-main" data-current-vehicle="" hidden>
     <div class="vehicle-select">
       <label>¿En qué vehículo vas?</label>
       <div class="vehicle-buttons">
@@ -42,19 +49,36 @@
       <span id="statusText">Elige tu vehículo</span>
     </div>
 
+    <section class="conductor-waiting" id="conductorWaiting" aria-live="polite">
+      <h2>Personas esperando</h2>
+      <div class="conductor-wait-row"><span>Hotel Campezo 10</span><strong id="wait-hotel">0</strong></div>
+      <div class="conductor-wait-row"><span>Terminal T1</span><strong id="wait-t1">0</strong></div>
+      <div class="conductor-wait-row"><span>Terminal T2</span><strong id="wait-t2">0</strong></div>
+      <div class="conductor-wait-row"><span>Terminal T3</span><strong id="wait-t3">0</strong></div>
+      <div class="conductor-wait-row"><span>Terminal T4</span><strong id="wait-t4">0</strong></div>
+    </section>
+
     <p class="hint">Mantén esta página abierta en el móvil. La ubicación se envía automáticamente.</p>
   </main>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
+    const CONDUCTOR_KEY_STORAGE = "transferAxorConductorKey";
     let selectedVehicle = null;
     let vehicleCapacity = 8;
     let watchId = null;
+    let conductorReady = false;
+
+    const conductorAuthEl = document.getElementById("conductorAuth");
+    const conductorMainEl = document.getElementById("conductor-main");
+    const conductorKeyEl = document.getElementById("conductorKey");
+    const conductorAuthBtn = document.getElementById("conductorAuthBtn");
+    const conductorAuthError = document.getElementById("conductorAuthError");
 
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
-    const mainEl = document.getElementById("conductor-main");
+    const mainEl = conductorMainEl;
     const passengerPanel = document.getElementById("passengerPanel");
     const passengerCount = document.getElementById("passengerCount");
     const passengerCapacity = document.getElementById("passengerCapacity");
@@ -65,6 +89,62 @@
       statusDot.className = "status-dot " + (ok ? "ok" : "error");
       statusText.textContent = text;
     }
+
+    function readConductorToken() {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get("clave");
+      if (fromUrl) {
+        sessionStorage.setItem(CONDUCTOR_KEY_STORAGE, fromUrl);
+        return fromUrl;
+      }
+      return sessionStorage.getItem(CONDUCTOR_KEY_STORAGE) || "";
+    }
+
+    function showConductorPanel() {
+      conductorReady = true;
+      conductorAuthEl.hidden = true;
+      conductorMainEl.hidden = false;
+      conductorAuthError.hidden = true;
+    }
+
+    function showConductorAuth() {
+      conductorReady = false;
+      conductorAuthEl.hidden = false;
+      conductorMainEl.hidden = true;
+    }
+
+    function requestConductorAuth() {
+      const token = readConductorToken() || conductorKeyEl.value.trim();
+      socket.emit("conductor-auth", { token: token });
+    }
+
+    function updateWaitingDisplay(counts) {
+      ["hotel", "t1", "t2", "t3", "t4"].forEach(function(key) {
+        const el = document.getElementById("wait-" + key);
+        if (el) el.textContent = String((counts && counts[key]) || 0);
+      });
+    }
+
+    conductorAuthBtn.addEventListener("click", requestConductorAuth);
+    conductorKeyEl.addEventListener("keydown", function(event) {
+      if (event.key === "Enter") requestConductorAuth();
+    });
+
+    socket.on("conductor-auth-ok", function() {
+      const token = readConductorToken() || conductorKeyEl.value.trim();
+      if (token) sessionStorage.setItem(CONDUCTOR_KEY_STORAGE, token);
+      showConductorPanel();
+    });
+
+    socket.on("conductor-auth-fail", function() {
+      sessionStorage.removeItem(CONDUCTOR_KEY_STORAGE);
+      showConductorAuth();
+      conductorAuthError.hidden = false;
+    });
+
+    socket.on("waiting", updateWaitingDisplay);
+
+    requestConductorAuth();
 
     function clampPassengers(value) {
       const n = Number(value);
