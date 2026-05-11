@@ -1,0 +1,398 @@
+/* Variables y base */
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --border: #2d3a4d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --accent-dim: #388bfd;
+  --green: #3fb950;
+  --red: #f85149;
+  --vito1: #f59e0b;
+  --vito2: #10b981;
+  --vito3: #8b5cf6;
+  --vito4: #ec4899;
+  --minibus: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* Página conductor (móvil) */
+.conductor-page {
+  padding: 1rem;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.conductor-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.conductor-header > div {
+  text-align: left;
+}
+
+.conductor-header h1 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem 0;
+}
+
+.conductor-header p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.conductor-main {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.vehicle-select label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.vehicle-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.vehicle-buttons button {
+  padding: 0.75rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.vehicle-buttons button:hover {
+  border-color: var(--accent);
+}
+
+.vehicle-buttons button.active {
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.15);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.5rem 0;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.status-dot.ok {
+  background: var(--green);
+}
+
+.status-dot.error {
+  background: var(--red);
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 1rem 0 0 0;
+  padding: 0 0.25rem;
+}
+
+/* Mapa (pantalla principal) — forzado a orientación vertical (tele en vertical) */
+.map-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  /* Contenido en formato vertical: ancho limitado por la altura (proporción 9:16) */
+  max-width: min(100vw, 56.25vh);
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.map-header {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.header-logo {
+  height: 44px;
+  width: 44px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.map-header .header-logo {
+  height: 36px;
+  width: 36px;
+}
+
+.conductor-header .header-logo.conductor-logo {
+  height: 52px;
+  width: 52px;
+}
+
+.map-header h1 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.map-header-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.map-header-links a {
+  color: var(--accent);
+  font-size: 0.7rem;
+  text-decoration: none;
+}
+
+.map-container {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+  background: #1a2332;
+}
+
+/* Leyenda de vehículos — una columna para formato vertical */
+.legend {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 0.5rem;
+  right: 0.5rem;
+  background: rgba(26, 35, 50, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  z-index: 1000;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.legend-section {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.3rem;
+}
+
+.legend-waiting {
+  border-top: 1px solid var(--border);
+  padding-top: 0.35rem;
+}
+
+.legend-eta-title {
+  grid-column: 1 / -1;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-bottom: 0.1rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-dot.vito1 { background: var(--vito1); }
+.legend-dot.vito2 { background: var(--vito2); }
+.legend-dot.vito3 { background: var(--vito3); }
+.legend-dot.vito4 { background: var(--vito4); }
+.legend-dot.minibus { background: var(--minibus); }
+
+.legend-label {
+  color: var(--text);
+}
+
+.legend-pax {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-left: auto;
+}
+
+.legend-eta {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-left: 0.35rem;
+}
+
+.legend-wait {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.legend-wait-item .legend-label {
+  color: var(--muted);
+}
+
+.passenger-page {
+  padding: 1rem;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.passenger-main {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.location-select label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.location-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+.location-buttons button {
+  padding: 0.75rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.location-buttons button:hover,
+.location-buttons button.active {
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.15);
+}
+
+.btn-secondary {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.passenger-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.passenger-panel label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.passenger-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.passenger-step {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+.passenger-controls input {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  padding: 0.6rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.passenger-capacity {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Marcadores de vehículos en el mapa (Leaflet) */
+.vehicle-marker {
+  background: none !important;
+  border: none !important;
+}

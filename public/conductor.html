@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Conductor - Transfer Axor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="conductor-page">
+  <header class="conductor-header">
+    <img src="img/logo-axor.png" alt="Axor Hoteles" class="header-logo conductor-logo">
+    <div>
+      <h1>Enviar mi ubicación</h1>
+      <p>Selecciona tu vehículo y deja esta pantalla abierta</p>
+    </div>
+  </header>
+
+  <main class="conductor-main" id="conductor-main" data-current-vehicle="">
+    <div class="vehicle-select">
+      <label>¿En qué vehículo vas?</label>
+      <div class="vehicle-buttons">
+        <button type="button" data-vehicle="vito1" data-capacity="8">Vito 1 (8 plazas)</button>
+        <button type="button" data-vehicle="vito2" data-capacity="8">Vito 2 (8 plazas)</button>
+        <button type="button" data-vehicle="vito3" data-capacity="8">Vito 3 (8 plazas)</button>
+        <button type="button" data-vehicle="vito4" data-capacity="8">Vito 4 (8 plazas)</button>
+        <button type="button" data-vehicle="minibus" data-capacity="15">Minibús (15 plazas)</button>
+      </div>
+    </div>
+
+    <div class="passenger-panel" id="passengerPanel" hidden>
+      <label for="passengerCount">Pasajeros a bordo</label>
+      <div class="passenger-controls">
+        <button type="button" class="passenger-step" id="passengerMinus" aria-label="Quitar pasajero">−</button>
+        <input type="number" id="passengerCount" min="0" step="1" inputmode="numeric">
+        <button type="button" class="passenger-step" id="passengerPlus" aria-label="Añadir pasajero">+</button>
+      </div>
+      <p class="passenger-capacity" id="passengerCapacity"></p>
+    </div>
+
+    <div class="status" id="status">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Elige tu vehículo</span>
+    </div>
+
+    <p class="hint">Mantén esta página abierta en el móvil. La ubicación se envía automáticamente.</p>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let selectedVehicle = null;
+    let vehicleCapacity = 8;
+    let watchId = null;
+
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const mainEl = document.getElementById("conductor-main");
+    const passengerPanel = document.getElementById("passengerPanel");
+    const passengerCount = document.getElementById("passengerCount");
+    const passengerCapacity = document.getElementById("passengerCapacity");
+    const passengerMinus = document.getElementById("passengerMinus");
+    const passengerPlus = document.getElementById("passengerPlus");
+
+    function setStatus(ok, text) {
+      statusDot.className = "status-dot " + (ok ? "ok" : "error");
+      statusText.textContent = text;
+    }
+
+    function clampPassengers(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 0;
+      return Math.max(0, Math.min(vehicleCapacity, Math.round(n)));
+    }
+
+    function updateCapacityLabel() {
+      passengerCapacity.textContent = "Capacidad máxima: " + vehicleCapacity + " plazas";
+      passengerCount.max = String(vehicleCapacity);
+    }
+
+    function sendPassengers() {
+      if (!selectedVehicle) return;
+      const count = clampPassengers(passengerCount.value);
+      passengerCount.value = String(count);
+      socket.emit("passengers", { count: count });
+    }
+
+    function setPassengerCount(value, emit) {
+      const count = clampPassengers(value);
+      passengerCount.value = String(count);
+      if (emit) sendPassengers();
+    }
+
+    document.querySelectorAll(".vehicle-buttons button").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        document.querySelectorAll(".vehicle-buttons button").forEach(function(b) {
+          b.classList.remove("active");
+        });
+        btn.classList.add("active");
+        selectedVehicle = btn.dataset.vehicle;
+        vehicleCapacity = Number(btn.dataset.capacity) || 8;
+        mainEl.setAttribute("data-current-vehicle", selectedVehicle || "");
+        passengerPanel.hidden = false;
+        updateCapacityLabel();
+        setPassengerCount(0, false);
+        if (selectedVehicle) socket.emit("register", { vehicleId: selectedVehicle });
+        setStatus(true, "Enviando ubicación...");
+        startTracking();
+      });
+    });
+
+    passengerMinus.addEventListener("click", function() {
+      setPassengerCount(Number(passengerCount.value) - 1, true);
+    });
+
+    passengerPlus.addEventListener("click", function() {
+      setPassengerCount(Number(passengerCount.value) + 1, true);
+    });
+
+    passengerCount.addEventListener("change", function() {
+      setPassengerCount(passengerCount.value, true);
+    });
+
+    socket.on("vehicles", function(vehicles) {
+      if (!selectedVehicle || !vehicles[selectedVehicle]) return;
+      const vehicle = vehicles[selectedVehicle];
+      vehicleCapacity = vehicle.capacity || vehicleCapacity;
+      updateCapacityLabel();
+      setPassengerCount(vehicle.passengers || 0, false);
+    });
+
+    function startTracking() {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+
+      if (!navigator.geolocation) {
+        setStatus(false, "Tu navegador no soporta geolocalización");
+        return;
+      }
+
+      watchId = navigator.geolocation.watchPosition(
+        function(pos) {
+          socket.emit("position", {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          });
+          setStatus(true, "Ubicación enviada");
+        },
+        function(err) {
+          setStatus(false, "Error: " + (err.message || "No se puede obtener ubicación"));
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      );
+    }
+  </script>
+</body>
+</html>

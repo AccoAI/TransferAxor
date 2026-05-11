@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Apuntarse - Transfer Axor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="passenger-page">
+  <header class="conductor-header">
+    <img src="img/logo-axor.png" alt="Axor Hoteles" class="header-logo conductor-logo">
+    <div>
+      <h1>Apuntarse al transfer</h1>
+      <p>Indica dónde esperas el servicio</p>
+    </div>
+  </header>
+
+  <main class="passenger-main">
+    <div class="location-select">
+      <label>¿Dónde estás esperando?</label>
+      <div class="location-buttons">
+        <button type="button" data-location="hotel">Hotel Campezo 10</button>
+        <button type="button" data-location="t1">Terminal T1</button>
+        <button type="button" data-location="t2">Terminal T2</button>
+        <button type="button" data-location="t3">Terminal T3</button>
+        <button type="button" data-location="t4">Terminal T4</button>
+      </div>
+    </div>
+
+    <div class="status" id="status">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Elige tu ubicación</span>
+    </div>
+
+    <button type="button" class="btn-secondary" id="cancelBtn" hidden>Cancelar mi apunte</button>
+
+    <p class="hint">Tu apunte cuenta como una persona en esa parada. Si cambias de sitio, elige la nueva ubicación.</p>
+    <p class="hint"><a href="/">Ver mapa en tiempo real</a></p>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const labels = {
+      hotel: "Hotel Campezo 10",
+      t1: "Terminal T1",
+      t2: "Terminal T2",
+      t3: "Terminal T3",
+      t4: "Terminal T4"
+    };
+
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const cancelBtn = document.getElementById("cancelBtn");
+    let currentLocation = null;
+
+    function setStatus(ok, text) {
+      statusDot.className = "status-dot " + (ok ? "ok" : "error");
+      statusText.textContent = text;
+    }
+
+    function setActiveButton(location) {
+      document.querySelectorAll(".location-buttons button").forEach(function(btn) {
+        btn.classList.toggle("active", btn.dataset.location === location);
+      });
+    }
+
+    function applySignup(location) {
+      currentLocation = location || null;
+      setActiveButton(currentLocation);
+      cancelBtn.hidden = !currentLocation;
+      if (currentLocation) {
+        setStatus(true, "Apuntado en " + labels[currentLocation]);
+      } else {
+        setStatus(true, "Apunte cancelado");
+      }
+    }
+
+    document.querySelectorAll(".location-buttons button").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        socket.emit("signup", { location: btn.dataset.location });
+      });
+    });
+
+    cancelBtn.addEventListener("click", function() {
+      socket.emit("cancel-signup");
+    });
+
+    socket.on("signup-status", function(data) {
+      applySignup(data && data.location);
+    });
+  </script>
+</body>
+</html>
