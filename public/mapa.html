@@ -237,12 +237,42 @@
       return null;
     }
 
+    function computeEtaSecondsToStop(currentLeg, remainingOnLegSec, departureWaitSec, stopName) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) return null;
+      const targetIdx = ROUTE_STOP_NAMES.indexOf(stopName);
+      if (targetIdx < 0) return null;
+      const start = currentLeg < 0 ? 0 : currentLeg;
+      if (targetIdx < start) return null;
+      let sec = departureWaitSec || 0;
+      if (currentLeg < 0) {
+        for (let i = 0; i <= targetIdx; i++) sec += routeLegDurationsSec[i];
+        sec += targetIdx * PARADA_TERMINAL_MIN * 60;
+      } else {
+        sec += remainingOnLegSec;
+        for (let i = currentLeg + 1; i <= targetIdx; i++) sec += routeLegDurationsSec[i];
+        sec += (targetIdx - currentLeg) * PARADA_TERMINAL_MIN * 60;
+      }
+      return sec;
+    }
+
     function getStopEtaSecondsRemaining(meta, stopName) {
-      if (!meta || !meta.stopEtas || !meta.stopEtas.length) return null;
-      const hit = meta.stopEtas.find(function(stop) { return stop.name === stopName; });
-      if (!hit) return null;
+      if (!meta) return null;
+      let baseSec = null;
+      if (meta.stopEtas && meta.stopEtas.length) {
+        const hit = meta.stopEtas.find(function(stop) { return stop.name === stopName; });
+        if (hit) baseSec = hit.sec;
+      }
+      if (baseSec === null && meta.routeEtaContext) {
+        baseSec = computeEtaSecondsToStop(
+          meta.routeEtaContext.currentLeg,
+          meta.routeEtaContext.remainingOnLegSec,
+          meta.routeEtaContext.departureWaitSec,
+          stopName
+        );
+      }
+      if (baseSec === null) return null;
       const elapsed = (Date.now() - (meta.stopEtasAt || Date.now())) / 1000;
-      return Math.max(0, hit.sec - elapsed);
+      return Math.max(0, baseSec - elapsed);
     }
 
     function updateLegendCompact() {
@@ -268,7 +298,7 @@
       legendCompactEl.textContent = vehicleLabel + " · " + label + " en " + formatMinutesDelta(remaining);
     }
 
-    setInterval(updateLegendCompact, 30000);
+    setInterval(updateLegendCompact, 10000);
 
     let map;
     let directionsRenderer;
@@ -277,6 +307,7 @@
     const stopPoints = [];
     var lastVehiclesLive = {};
     var activeVehicleIdOnMap = null;
+    var lastActiveVehicleEta = null;
     // Duraciones de cada tramo del circuito (segundos), rellenado cuando carga la ruta: [Hotel→T1, T1→T2, T2→T3, T3→T4, T4→Hotel]
     let routeLegDurationsSec = null;
     const PARADA_TERMINAL_MIN = 4;
@@ -411,9 +442,29 @@
       const meta = vehicleMeta[vehicleId] || {};
       meta.stopEtas = stopEtas;
       meta.stopEtasAt = Date.now();
+      meta.routeEtaContext = {
+        currentLeg: currentLeg,
+        remainingOnLegSec: remainingOnLegSec,
+        departureWaitSec: departureWaitSec || 0
+      };
       vehicleMeta[vehicleId] = meta;
       const display = formatEtasDisplay(stopEtas, depInfo);
-      setEtaForVehicle(vehicleId, label, display);
+      setEtaForVehicle(vehicleId, label, {
+        summary: display.summary,
+        detail: display.detail,
+        stopEtas: stopEtas
+      });
+    }
+
+    function refreshActiveVehicleEta(directionsService) {
+      if (!lastActiveVehicleEta || !directionsService) return;
+      updateEtaFromGoogle(
+        lastActiveVehicleEta.id,
+        lastActiveVehicleEta.lat,
+        lastActiveVehicleEta.lng,
+        lastActiveVehicleEta.label,
+        directionsService
+      );
     }
 
     function updateEtaFromGoogle(vehicleId, lat, lng, label, directionsService) {
@@ -477,9 +528,9 @@
     function setEtaForVehicle(vehicleId, label, eta) {
       const meta = vehicleMeta[vehicleId] || {};
       meta.label = label;
-      if (!eta.detail) {
-        meta.stopEtas = null;
-        meta.stopEtasAt = null;
+      if (eta && eta.stopEtas) {
+        meta.stopEtas = eta.stopEtas;
+        meta.stopEtasAt = Date.now();
       }
       vehicleMeta[vehicleId] = meta;
       const el = document.getElementById(etaEl[vehicleId]);
@@ -589,6 +640,8 @@
           directionsRenderer.setDirections(result);
           routeLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
           scheduleFitRouteViewport(result);
+          refreshActiveVehicleEta(directionsService);
+          updateLegendCompact();
         }
       });
 
@@ -646,6 +699,7 @@
         }
         if (activeOne) lastVehiclesLive[activeOne.id] = true;
         activeVehicleIdOnMap = activeOne ? activeOne.id : null;
+        if (!activeOne) lastActiveVehicleEta = null;
         setVehicleRowActive(activeVehicleIdOnMap);
 
         var activeId = activeOne ? activeOne.id : null;
@@ -665,6 +719,7 @@
           var id = activeOne.id;
           var v = activeOne.v;
           var label = v.label || id;
+          lastActiveVehicleEta = { id: id, lat: v.lat, lng: v.lng, label: label };
           var pos = { lat: v.lat, lng: v.lng };
           if (vehicleMarkers[id]) {
             vehicleMarkers[id].setPosition(pos);
