@@ -204,6 +204,23 @@ body {
   background: #1a2332;
 }
 
+/* Bocadillos de Google Maps: fondo claro, texto oscuro (no heredar el tema oscuro del body) */
+.map-popup {
+  color: #1a2332;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.map-popup b,
+.map-popup strong {
+  color: #0f1419;
+}
+
+.map-popup a {
+  color: #0b57d0;
+}
+
 /* Leyenda de vehículos — una columna para formato vertical */
 .legend {
   position: absolute;

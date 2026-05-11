@@ -214,11 +214,15 @@
       }
     }
 
+    function wrapMapPopup(html) {
+      return "<div class=\"map-popup\">" + html + "</div>";
+    }
+
     function makeStopPopup(title, locationKey, link) {
       const waiting = waitingCounts[locationKey] || 0;
       let html = "<b>" + title + "</b><br>Esperando: <strong>" + waiting + "</strong>";
       if (link) html += "<br><a href=\"" + link + "\" target=\"_blank\" rel=\"noopener\">Abrir en Google Maps</a>";
-      return html;
+      return wrapMapPopup(html);
     }
 
     function updateWaitingDisplay() {
@@ -247,7 +251,7 @@
       const salidaLine = eta.departureImminent
         ? "Salida inminente: <strong>" + eta.departureTime + "</strong>"
         : (eta.departureTime ? "Próx. salida: <strong>" + eta.departureTime + "</strong>" : "");
-      vehiclePopupContent[vehicleId] = "<b>" + label + "</b>" + vehiclePaxLine(vehicleId) + "<br>Llegada al hotel: <strong>" + mainText + (eta.departureTime ? "</strong><br>" + salidaLine : detail ? "</strong>" + detail : "</strong>");
+      vehiclePopupContent[vehicleId] = wrapMapPopup("<b>" + label + "</b>" + vehiclePaxLine(vehicleId) + "<br>Llegada al hotel: <strong>" + mainText + (eta.departureTime ? "</strong><br>" + salidaLine : detail ? "</strong>" + detail : "</strong>"));
       const el = document.getElementById(etaEl[vehicleId]);
       if (el) el.textContent = " " + mainText + (detail || (eta.etaTime ? " (~" + eta.etaTime + ")" : ""));
     }
