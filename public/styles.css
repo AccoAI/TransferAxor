@@ -279,20 +279,23 @@ body {
 }
 
 .client-signup-stops {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.35rem;
+  width: 100%;
   flex: 1 1 100%;
 }
 
 .client-signup-stop {
-  padding: 0.4rem 0.55rem;
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.25rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--bg);
   color: var(--text);
   font-size: 0.78rem;
-  line-height: 1;
+  line-height: 1.1;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }

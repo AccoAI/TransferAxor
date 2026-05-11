@@ -112,18 +112,39 @@
       });
     }
 
+    function updateSignupStatus(location, people) {
+      if (!location) {
+        signupStatusEl.textContent = "";
+        return;
+      }
+      const label = SIGNUP_LABELS[location] || location;
+      signupStatusEl.textContent = people > 1
+        ? "Apuntado en " + label + " (" + people + " personas)"
+        : "Apuntado en " + label;
+    }
+
     function submitSignup(location) {
       if (signedUp || !location) return;
       setSelectedLocation(location);
       socket.emit("signup", { location: location, people: partyCount });
     }
 
+    function syncSignupPeople() {
+      if (!signedUp || !selectedLocation) return;
+      socket.emit("signup", { location: selectedLocation, people: partyCount });
+      updateSignupStatus(selectedLocation, partyCount);
+    }
+
+    function changePartyCount(next) {
+      partyCount = Math.max(1, Math.min(MAX_SIGNUP_PEOPLE, next));
+      updatePartyControls();
+      syncSignupPeople();
+    }
+
     function updatePartyControls() {
       partyCountEl.textContent = String(partyCount);
-      if (!signedUp) {
-        partyMinusEl.disabled = partyCount <= 1;
-        partyPlusEl.disabled = partyCount >= MAX_SIGNUP_PEOPLE;
-      }
+      partyMinusEl.disabled = partyCount <= 1;
+      partyPlusEl.disabled = partyCount >= MAX_SIGNUP_PEOPLE;
     }
 
     function setSignedUp(active, location, people) {
@@ -131,31 +152,22 @@
       signupStopEls.forEach(function(btn) {
         btn.disabled = active;
       });
-      partyMinusEl.disabled = active || partyCount <= 1;
-      partyPlusEl.disabled = active || partyCount >= MAX_SIGNUP_PEOPLE;
       cancelSignupBtnEl.hidden = !active;
       if (active && location) {
         setSelectedLocation(location);
-        const label = SIGNUP_LABELS[location] || location;
-        signupStatusEl.textContent = people > 1
-          ? "Apuntado en " + label + " (" + people + " personas)"
-          : "Apuntado en " + label;
+        updateSignupStatus(location, people);
       } else {
         setSelectedLocation(null);
-        signupStatusEl.textContent = "";
+        updateSignupStatus(null, 0);
       }
     }
 
     partyMinusEl.addEventListener("click", function() {
-      if (signedUp) return;
-      partyCount = Math.max(1, partyCount - 1);
-      updatePartyControls();
+      changePartyCount(partyCount - 1);
     });
 
     partyPlusEl.addEventListener("click", function() {
-      if (signedUp) return;
-      partyCount = Math.min(MAX_SIGNUP_PEOPLE, partyCount + 1);
-      updatePartyControls();
+      changePartyCount(partyCount + 1);
     });
 
     signupStopEls.forEach(function(btn) {
