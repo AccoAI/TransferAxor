@@ -34,22 +34,20 @@
     <h1>Transfer — Campezo 10 ↔ Barajas T1–T4</h1>
   </header>
   <section class="client-signup" id="clientSignup">
-    <label class="client-signup-label" for="signupLocation">¿Dónde esperas?</label>
-    <select id="signupLocation" class="client-signup-select">
-      <option value="">Elige parada</option>
-      <option value="hotel">Hotel Campezo 10</option>
-      <option value="t1">Terminal T1</option>
-      <option value="t2">Terminal T2</option>
-      <option value="t3">Terminal T3</option>
-      <option value="t4">Terminal T4</option>
-    </select>
+    <span class="client-signup-label">¿Dónde esperas?</span>
+    <div class="client-signup-stops" id="signupStops" role="group" aria-label="Parada">
+      <button type="button" class="client-signup-stop" data-location="hotel">Hotel</button>
+      <button type="button" class="client-signup-stop" data-location="t1">T1</button>
+      <button type="button" class="client-signup-stop" data-location="t2">T2</button>
+      <button type="button" class="client-signup-stop" data-location="t3">T3</button>
+      <button type="button" class="client-signup-stop" data-location="t4">T4</button>
+    </div>
     <div class="client-signup-party">
       <span class="client-signup-party-label">Personas</span>
       <button type="button" class="client-signup-step" id="partyMinus" aria-label="Quitar persona">−</button>
       <span class="client-signup-count" id="partyCount">1</span>
       <button type="button" class="client-signup-step" id="partyPlus" aria-label="Añadir persona">+</button>
     </div>
-    <button type="button" class="client-signup-btn" id="signupBtn">Apuntarme</button>
     <button type="button" class="client-signup-cancel" id="cancelSignupBtn" hidden>Cancelar</button>
     <span class="client-signup-status" id="signupStatus"></span>
   </section>
@@ -97,15 +95,28 @@
     const MAX_SIGNUP_PEOPLE = 15;
 
     const socket = io();
-    const signupLocationEl = document.getElementById("signupLocation");
+    const signupStopEls = document.querySelectorAll(".client-signup-stop");
     const partyCountEl = document.getElementById("partyCount");
     const partyMinusEl = document.getElementById("partyMinus");
     const partyPlusEl = document.getElementById("partyPlus");
-    const signupBtnEl = document.getElementById("signupBtn");
     const cancelSignupBtnEl = document.getElementById("cancelSignupBtn");
     const signupStatusEl = document.getElementById("signupStatus");
     let partyCount = 1;
     let signedUp = false;
+    let selectedLocation = null;
+
+    function setSelectedLocation(location) {
+      selectedLocation = location || null;
+      signupStopEls.forEach(function(btn) {
+        btn.classList.toggle("active", btn.dataset.location === selectedLocation);
+      });
+    }
+
+    function submitSignup(location) {
+      if (signedUp || !location) return;
+      setSelectedLocation(location);
+      socket.emit("signup", { location: location, people: partyCount });
+    }
 
     function updatePartyControls() {
       partyCountEl.textContent = String(partyCount);
@@ -117,17 +128,20 @@
 
     function setSignedUp(active, location, people) {
       signedUp = active;
-      signupLocationEl.disabled = active;
+      signupStopEls.forEach(function(btn) {
+        btn.disabled = active;
+      });
       partyMinusEl.disabled = active || partyCount <= 1;
       partyPlusEl.disabled = active || partyCount >= MAX_SIGNUP_PEOPLE;
-      signupBtnEl.hidden = active;
       cancelSignupBtnEl.hidden = !active;
       if (active && location) {
+        setSelectedLocation(location);
         const label = SIGNUP_LABELS[location] || location;
         signupStatusEl.textContent = people > 1
           ? "Apuntado en " + label + " (" + people + " personas)"
           : "Apuntado en " + label;
       } else {
+        setSelectedLocation(null);
         signupStatusEl.textContent = "";
       }
     }
@@ -144,13 +158,10 @@
       updatePartyControls();
     });
 
-    signupBtnEl.addEventListener("click", function() {
-      const location = signupLocationEl.value;
-      if (!location) {
-        signupStatusEl.textContent = "Elige dónde esperas el transfer";
-        return;
-      }
-      socket.emit("signup", { location: location, people: partyCount });
+    signupStopEls.forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        submitSignup(btn.dataset.location);
+      });
     });
 
     cancelSignupBtnEl.addEventListener("click", function() {
@@ -164,7 +175,6 @@
         partyCount = people;
         updatePartyControls();
         setSignedUp(true, location, people);
-        signupLocationEl.value = location;
       } else {
         setSignedUp(false, null, 0);
         updatePartyControls();

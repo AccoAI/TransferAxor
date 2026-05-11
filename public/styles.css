@@ -278,14 +278,34 @@ body {
   color: var(--muted);
 }
 
-.client-signup-select {
-  min-width: 9.5rem;
-  padding: 0.45rem 0.55rem;
+.client-signup-stops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1 1 100%;
+}
+
+.client-signup-stop {
+  padding: 0.4rem 0.55rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--bg);
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.client-signup-stop:hover:not(:disabled),
+.client-signup-stop.active {
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.15);
+}
+
+.client-signup-stop:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .client-signup-party {
@@ -321,21 +341,11 @@ body {
   font-weight: 600;
 }
 
-.client-signup-btn,
 .client-signup-cancel {
   padding: 0.45rem 0.75rem;
   border-radius: 8px;
   font-size: 0.85rem;
   cursor: pointer;
-}
-
-.client-signup-btn {
-  border: 1px solid var(--accent-dim);
-  background: rgba(56, 139, 253, 0.18);
-  color: var(--text);
-}
-
-.client-signup-cancel {
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--muted);
