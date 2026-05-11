@@ -29,6 +29,8 @@ const vehicles = {
 };
 
 const signups = new Map();
+const scheduledTrips = new Map();
+const MADRID_TZ = "Europe/Madrid";
 
 let activeVehicleId = null;
 let activeSocketId = null;
@@ -90,6 +92,23 @@ function emitWaitingToConductors() {
   io.to("conductors").emit("waiting", getWaitingCounts());
 }
 
+function getScheduledTripsForConductors() {
+  const list = [];
+  for (const trip of scheduledTrips.values()) {
+    list.push({ ...trip });
+  }
+  list.sort(function(a, b) {
+    const aKey = a.mode === "datetime" ? (a.departureDate + "T" + a.departureTime) : "z" + (a.flightCode || "");
+    const bKey = b.mode === "datetime" ? (b.departureDate + "T" + b.departureTime) : "z" + (b.flightCode || "");
+    return aKey.localeCompare(bKey);
+  });
+  return list;
+}
+
+function emitScheduledTripsToConductors() {
+  io.to("conductors").emit("scheduled-trips", getScheduledTripsForConductors());
+}
+
 function broadcastState() {
   io.emit("vehicles", getVehiclesForClients());
   emitWaitingToConductors();
@@ -116,6 +135,65 @@ function isConductorAuthorized(token) {
   return token === CONDUCTOR_ACCESS_KEY;
 }
 
+function madridDateString(date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: MADRID_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date || new Date());
+}
+
+function madridTimeString(date) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: MADRID_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date || new Date());
+}
+
+function normalizeFlightCode(code) {
+  return String(code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+}
+
+function parseDepartureDate(dateStr) {
+  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return match[0];
+}
+
+function parseDepartureTime(timeStr) {
+  const match = String(timeStr || "").match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return match[1] + ":" + match[2];
+}
+
+function isDepartureInPast(departureDate, departureTime) {
+  const today = madridDateString();
+  if (departureDate < today) return true;
+  if (departureDate > today) return false;
+  return departureTime <= madridTimeString();
+}
+
+function removeScheduledTrip(socketId) {
+  if (scheduledTrips.delete(socketId)) emitScheduledTripsToConductors();
+}
+
 io.on("connection", (socket) => {
   socket.emit("vehicles", getVehiclesForClients());
 
@@ -125,6 +203,11 @@ io.on("connection", (socket) => {
       location: existingSignup.location,
       people: existingSignup.people || 1,
     });
+  }
+
+  const existingTrip = scheduledTrips.get(socket.id);
+  if (existingTrip) {
+    socket.emit("trip-schedule-status", existingTrip);
   }
 
   socket.on("conductor-auth", (data) => {
@@ -137,6 +220,7 @@ io.on("connection", (socket) => {
     socket.data.isConductor = true;
     socket.emit("conductor-auth-ok");
     socket.emit("waiting", getWaitingCounts());
+    socket.emit("scheduled-trips", getScheduledTripsForConductors());
   });
 
   socket.on("register", (data) => {
@@ -186,8 +270,51 @@ io.on("connection", (socket) => {
     socket.emit("signup-status", { location: null, people: 0 });
   });
 
+  socket.on("schedule-trip", (data) => {
+    const location = data && data.location;
+    if (!WAITING_LOCATIONS.includes(location)) {
+      socket.emit("trip-schedule-status", { active: false, error: "invalid-location" });
+      return;
+    }
+    const people = clampSignupPeople(data && data.people);
+    const mode = data && data.mode === "flight" ? "flight" : "datetime";
+    const trip = { location, people, mode, active: true };
+
+    if (mode === "flight") {
+      const flightCode = normalizeFlightCode(data && data.flightCode);
+      if (flightCode.length < 3) {
+        socket.emit("trip-schedule-status", { active: false, error: "invalid-flight" });
+        return;
+      }
+      trip.flightCode = flightCode;
+    } else {
+      const departureDate = parseDepartureDate(data && data.departureDate);
+      const departureTime = parseDepartureTime(data && data.departureTime);
+      if (!departureDate || !departureTime) {
+        socket.emit("trip-schedule-status", { active: false, error: "invalid-datetime" });
+        return;
+      }
+      if (isDepartureInPast(departureDate, departureTime)) {
+        socket.emit("trip-schedule-status", { active: false, error: "past-datetime" });
+        return;
+      }
+      trip.departureDate = departureDate;
+      trip.departureTime = departureTime;
+    }
+
+    scheduledTrips.set(socket.id, trip);
+    socket.emit("trip-schedule-status", trip);
+    emitScheduledTripsToConductors();
+  });
+
+  socket.on("cancel-trip-schedule", () => {
+    removeScheduledTrip(socket.id);
+    socket.emit("trip-schedule-status", { active: false });
+  });
+
   socket.on("disconnect", () => {
     removeSignup(socket.id);
+    removeScheduledTrip(socket.id);
     if (socket.id === activeSocketId) {
       clearAllVehicles();
       activeVehicleId = null;

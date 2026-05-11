@@ -50,6 +50,39 @@
     </div>
     <button type="button" class="client-signup-cancel" id="cancelSignupBtn" hidden>Cancelar</button>
     <span class="client-signup-status" id="signupStatus"></span>
+    <button type="button" class="client-schedule-toggle" id="scheduleToggleBtn" aria-expanded="false" aria-controls="schedulePanel">Programar viaje</button>
+    <div class="client-schedule" id="schedulePanel" hidden>
+      <div class="client-schedule-modes" role="tablist" aria-label="Tipo de programación">
+        <button type="button" class="client-schedule-mode active" data-mode="datetime">Día y hora</button>
+        <button type="button" class="client-schedule-mode" data-mode="flight">Código de vuelo</button>
+      </div>
+      <label class="client-schedule-label" for="scheduleLocation">Salida desde</label>
+      <select id="scheduleLocation" class="client-schedule-select">
+        <option value="">Elige parada</option>
+        <option value="hotel">Hotel Campezo 10</option>
+        <option value="t1">Terminal T1</option>
+        <option value="t2">Terminal T2</option>
+        <option value="t3">Terminal T3</option>
+        <option value="t4">Terminal T4</option>
+      </select>
+      <div id="scheduleDatetimeFields">
+        <label class="client-schedule-label" for="scheduleDate">Día</label>
+        <input type="date" id="scheduleDate" class="client-schedule-input">
+        <label class="client-schedule-label" for="scheduleTime">Hora de salida</label>
+        <input type="time" id="scheduleTime" class="client-schedule-input">
+      </div>
+      <div id="scheduleFlightFields" hidden>
+        <label class="client-schedule-label" for="scheduleFlight">Código de vuelo</label>
+        <input type="text" id="scheduleFlight" class="client-schedule-input" inputmode="text" autocomplete="off" placeholder="Ej. IB3163">
+      </div>
+      <label class="client-schedule-label" for="schedulePeople">Personas</label>
+      <input type="number" id="schedulePeople" class="client-schedule-input" min="1" max="15" step="1" inputmode="numeric" value="1">
+      <div class="client-schedule-actions">
+        <button type="button" class="client-schedule-save" id="scheduleSaveBtn">Guardar viaje</button>
+        <button type="button" class="client-schedule-cancel" id="scheduleCancelBtn" hidden>Cancelar viaje</button>
+      </div>
+    </div>
+    <span class="client-schedule-status" id="scheduleStatus"></span>
   </section>
 
   <div class="map-container">
@@ -213,6 +246,162 @@
     });
 
     updatePartyControls();
+
+    const scheduleToggleBtnEl = document.getElementById("scheduleToggleBtn");
+    const schedulePanelEl = document.getElementById("schedulePanel");
+    const scheduleModeEls = document.querySelectorAll(".client-schedule-mode");
+    const scheduleLocationEl = document.getElementById("scheduleLocation");
+    const scheduleDateEl = document.getElementById("scheduleDate");
+    const scheduleTimeEl = document.getElementById("scheduleTime");
+    const scheduleFlightEl = document.getElementById("scheduleFlight");
+    const schedulePeopleEl = document.getElementById("schedulePeople");
+    const scheduleDatetimeFieldsEl = document.getElementById("scheduleDatetimeFields");
+    const scheduleFlightFieldsEl = document.getElementById("scheduleFlightFields");
+    const scheduleSaveBtnEl = document.getElementById("scheduleSaveBtn");
+    const scheduleCancelBtnEl = document.getElementById("scheduleCancelBtn");
+    const scheduleStatusEl = document.getElementById("scheduleStatus");
+    const CLIENT_MADRID_TZ = "Europe/Madrid";
+    let scheduleMode = "datetime";
+    let tripScheduled = false;
+
+    function madridTodayInputValue() {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: CLIENT_MADRID_TZ,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(new Date());
+    }
+
+    function formatScheduleDateLabel(dateStr) {
+      if (!dateStr) return "";
+      const parts = dateStr.split("-").map(Number);
+      if (parts.length !== 3) return dateStr;
+      const date = new Date(parts[0], parts[1] - 1, parts[2]);
+      return date.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
+    }
+
+    function setSchedulePanelOpen(open) {
+      if (!schedulePanelEl || !scheduleToggleBtnEl) return;
+      schedulePanelEl.hidden = !open;
+      scheduleToggleBtnEl.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    function setScheduleMode(mode) {
+      scheduleMode = mode === "flight" ? "flight" : "datetime";
+      scheduleModeEls.forEach(function(btn) {
+        btn.classList.toggle("active", btn.dataset.mode === scheduleMode);
+      });
+      if (scheduleDatetimeFieldsEl) scheduleDatetimeFieldsEl.hidden = scheduleMode !== "datetime";
+      if (scheduleFlightFieldsEl) scheduleFlightFieldsEl.hidden = scheduleMode !== "flight";
+    }
+
+    function updateScheduleStatus(trip) {
+      if (!scheduleStatusEl) return;
+      if (!trip || !trip.active) {
+        scheduleStatusEl.textContent = "";
+        return;
+      }
+      const label = SIGNUP_LABELS[trip.location] || trip.location;
+      if (trip.mode === "flight" && trip.flightCode) {
+        scheduleStatusEl.textContent = "Viaje programado: " + label + " · vuelo " + trip.flightCode + " · " + trip.people + " pers.";
+        return;
+      }
+      if (trip.departureDate && trip.departureTime) {
+        scheduleStatusEl.textContent = "Viaje programado: " + label + " · " + formatScheduleDateLabel(trip.departureDate) + " " + trip.departureTime + " · " + trip.people + " pers.";
+        return;
+      }
+      scheduleStatusEl.textContent = "Viaje programado";
+    }
+
+    function setTripScheduled(active, trip) {
+      tripScheduled = active;
+      if (scheduleCancelBtnEl) scheduleCancelBtnEl.hidden = !active;
+      if (active) setSchedulePanelOpen(false);
+      updateScheduleStatus(active ? trip : null);
+    }
+
+    function showScheduleError(code) {
+      if (!scheduleStatusEl) return;
+      if (code === "invalid-location") scheduleStatusEl.textContent = "Elige desde dónde sales";
+      else if (code === "invalid-flight") scheduleStatusEl.textContent = "Indica un código de vuelo válido";
+      else if (code === "invalid-datetime") scheduleStatusEl.textContent = "Indica día y hora de salida";
+      else if (code === "past-datetime") scheduleStatusEl.textContent = "La salida debe ser en el futuro";
+      else scheduleStatusEl.textContent = "No se pudo guardar el viaje";
+    }
+
+    function saveScheduledTrip() {
+      const location = scheduleLocationEl ? scheduleLocationEl.value : "";
+      const people = Math.max(1, Math.min(MAX_SIGNUP_PEOPLE, Number(schedulePeopleEl && schedulePeopleEl.value) || partyCount));
+      if (schedulePeopleEl) schedulePeopleEl.value = String(people);
+      const payload = { location: location, people: people, mode: scheduleMode };
+      if (scheduleMode === "flight") {
+        payload.flightCode = scheduleFlightEl ? scheduleFlightEl.value : "";
+      } else {
+        payload.departureDate = scheduleDateEl ? scheduleDateEl.value : "";
+        payload.departureTime = scheduleTimeEl ? scheduleTimeEl.value : "";
+      }
+      socket.emit("schedule-trip", payload);
+    }
+
+    if (scheduleDateEl) {
+      scheduleDateEl.min = madridTodayInputValue();
+    }
+    if (schedulePeopleEl) {
+      schedulePeopleEl.value = String(partyCount);
+    }
+    if (selectedLocation && scheduleLocationEl) {
+      scheduleLocationEl.value = selectedLocation;
+    }
+
+    if (scheduleToggleBtnEl) {
+      scheduleToggleBtnEl.addEventListener("click", function() {
+        const open = schedulePanelEl && schedulePanelEl.hidden;
+        setSchedulePanelOpen(open);
+        if (open) {
+          if (scheduleLocationEl && selectedLocation) scheduleLocationEl.value = selectedLocation;
+          if (schedulePeopleEl) schedulePeopleEl.value = String(partyCount);
+        }
+      });
+    }
+
+    scheduleModeEls.forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        setScheduleMode(btn.dataset.mode);
+      });
+    });
+
+    if (scheduleSaveBtnEl) {
+      scheduleSaveBtnEl.addEventListener("click", saveScheduledTrip);
+    }
+
+    if (scheduleCancelBtnEl) {
+      scheduleCancelBtnEl.addEventListener("click", function() {
+        socket.emit("cancel-trip-schedule");
+      });
+    }
+
+    socket.on("trip-schedule-status", function(data) {
+      if (data && data.error) {
+        showScheduleError(data.error);
+        return;
+      }
+      if (data && data.active) {
+        if (scheduleLocationEl) scheduleLocationEl.value = data.location || scheduleLocationEl.value;
+        if (schedulePeopleEl) schedulePeopleEl.value = String(data.people || 1);
+        if (data.mode === "flight") {
+          setScheduleMode("flight");
+          if (scheduleFlightEl) scheduleFlightEl.value = data.flightCode || "";
+        } else {
+          setScheduleMode("datetime");
+          if (scheduleDateEl) scheduleDateEl.value = data.departureDate || "";
+          if (scheduleTimeEl) scheduleTimeEl.value = data.departureTime || "";
+        }
+        setTripScheduled(true, data);
+        return;
+      }
+      setTripScheduled(false, null);
+    });
 
     function setLegendSheetExpanded(open) {
       if (!legendEl || !legendToggleEl) return;

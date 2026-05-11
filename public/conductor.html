@@ -49,6 +49,12 @@
       <span id="statusText">Elige tu vehículo</span>
     </div>
 
+    <section class="conductor-scheduled" id="conductorScheduled" aria-live="polite">
+      <h2>Viajes programados</h2>
+      <p class="conductor-scheduled-empty" id="scheduledTripsEmpty">Sin viajes programados</p>
+      <ul class="conductor-scheduled-list" id="scheduledTripsList"></ul>
+    </section>
+
     <section class="conductor-waiting" id="conductorWaiting" aria-live="polite">
       <h2>Personas esperando</h2>
       <div class="conductor-wait-row"><span>Hotel Campezo 10</span><strong id="wait-hotel">0</strong></div>
@@ -118,10 +124,47 @@
       socket.emit("conductor-auth", { token: token });
     }
 
+    const SCHEDULE_LABELS = {
+      hotel: "Hotel Campezo 10",
+      t1: "Terminal T1",
+      t2: "Terminal T2",
+      t3: "Terminal T3",
+      t4: "Terminal T4"
+    };
+
+    function formatScheduleDateLabel(dateStr) {
+      if (!dateStr) return "";
+      const parts = dateStr.split("-").map(Number);
+      if (parts.length !== 3) return dateStr;
+      const date = new Date(parts[0], parts[1] - 1, parts[2]);
+      return date.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
+    }
+
     function updateWaitingDisplay(counts) {
       ["hotel", "t1", "t2", "t3", "t4"].forEach(function(key) {
         const el = document.getElementById("wait-" + key);
         if (el) el.textContent = String((counts && counts[key]) || 0);
+      });
+    }
+
+    function updateScheduledTripsDisplay(trips) {
+      const listEl = document.getElementById("scheduledTripsList");
+      const emptyEl = document.getElementById("scheduledTripsEmpty");
+      if (!listEl || !emptyEl) return;
+      const items = Array.isArray(trips) ? trips : [];
+      listEl.innerHTML = "";
+      emptyEl.hidden = items.length > 0;
+      items.forEach(function(trip) {
+        const li = document.createElement("li");
+        const label = SCHEDULE_LABELS[trip.location] || trip.location;
+        let detail = "";
+        if (trip.mode === "flight" && trip.flightCode) {
+          detail = "Vuelo " + trip.flightCode;
+        } else if (trip.departureDate && trip.departureTime) {
+          detail = formatScheduleDateLabel(trip.departureDate) + " " + trip.departureTime;
+        }
+        li.textContent = label + " · " + detail + " · " + (trip.people || 1) + " pers.";
+        listEl.appendChild(li);
       });
     }
 
@@ -143,6 +186,7 @@
     });
 
     socket.on("waiting", updateWaitingDisplay);
+    socket.on("scheduled-trips", updateScheduledTripsDisplay);
 
     requestConductorAuth();
 

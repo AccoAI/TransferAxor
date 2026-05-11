@@ -114,6 +114,41 @@ body {
   border-top: 1px solid var(--border);
 }
 
+.conductor-scheduled {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.conductor-scheduled h2 {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.conductor-scheduled-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.conductor-scheduled-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conductor-scheduled-list li {
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+  color: var(--text);
+  border-bottom: 1px solid rgba(45, 58, 77, 0.55);
+}
+
+.conductor-scheduled-list li:last-child {
+  border-bottom: 0;
+}
+
 .conductor-waiting h2 {
   margin: 0 0 0.6rem;
   font-size: 0.95rem;
@@ -377,6 +412,83 @@ body {
   flex: 1 1 100%;
   font-size: 0.8rem;
   color: var(--green);
+}
+
+.client-schedule-toggle,
+.client-schedule-save {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: 1px solid var(--accent-dim);
+  background: rgba(56, 139, 253, 0.18);
+  color: var(--text);
+}
+
+.client-schedule {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem 0;
+}
+
+.client-schedule-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.client-schedule-mode {
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.client-schedule-mode.active {
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.15);
+}
+
+.client-schedule-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.client-schedule-select,
+.client-schedule-input {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.client-schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.client-schedule-cancel {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.client-schedule-status {
+  flex: 1 1 100%;
+  font-size: 0.8rem;
+  color: var(--accent);
 }
 
 .map-container {
