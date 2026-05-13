@@ -64,7 +64,7 @@
       <div class="conductor-wait-row"><span>Terminal T4</span><strong id="wait-t4">0</strong></div>
     </section>
 
-    <p class="hint">Mantén esta página abierta en el móvil. La ubicación se envía automáticamente.</p>
+    <p class="hint">Mantén esta página abierta en el móvil. La ubicación se envía cada pocos segundos. Si cambias a otra pestaña, el sistema puede reducir la frecuencia; al volver aquí se envía al instante.</p>
   </main>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -74,6 +74,8 @@
     let selectedVehicle = null;
     let vehicleCapacity = 8;
     let watchId = null;
+    let positionPollTimer = null;
+    const POSITION_POLL_MS = 3000;
     let conductorReady = false;
 
     const conductorAuthEl = document.getElementById("conductorAuth");
@@ -252,8 +254,30 @@
       setPassengerCount(vehicle.passengers || 0, false);
     });
 
+    function emitConductorPosition(pos) {
+      socket.emit("position", {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      });
+      setStatus(true, "Ubicación enviada");
+    }
+
+    document.addEventListener("visibilitychange", function() {
+      if (document.visibilityState !== "visible") return;
+      if (watchId === null || !selectedVehicle || !navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        emitConductorPosition,
+        function() {},
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+      );
+    });
+
     function startTracking() {
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (positionPollTimer !== null) {
+        clearInterval(positionPollTimer);
+        positionPollTimer = null;
+      }
 
       if (!navigator.geolocation) {
         setStatus(false, "Tu navegador no soporta geolocalización");
@@ -262,17 +286,24 @@
 
       watchId = navigator.geolocation.watchPosition(
         function(pos) {
-          socket.emit("position", {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-          });
-          setStatus(true, "Ubicación enviada");
+          emitConductorPosition(pos);
         },
         function(err) {
           setStatus(false, "Error: " + (err.message || "No se puede obtener ubicación"));
         },
         { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
       );
+
+      function pollPositionOnce() {
+        navigator.geolocation.getCurrentPosition(
+          emitConductorPosition,
+          function() {},
+          { enableHighAccuracy: true, maximumAge: 8000, timeout: 15000 }
+        );
+      }
+
+      pollPositionOnce();
+      positionPollTimer = setInterval(pollPositionOnce, POSITION_POLL_MS);
     }
   </script>
 </body>

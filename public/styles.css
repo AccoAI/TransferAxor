@@ -237,13 +237,20 @@ body {
 .map-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
   width: 100vw;
   overflow: hidden;
+  /* 100vh en móvil incluye zona bajo la barra del navegador: el panel inferior queda recortado.
+     svh = viewport visible (pequeño); encaja la hoja inferior en pantalla. */
+  height: 100vh;
+  height: 100dvh;
+  height: 100svh;
+  max-height: 100svh;
   /* Contenido en formato vertical: ancho limitado por la altura (proporción 9:16) */
   max-width: min(100vw, 56.25vh);
   margin: 0 auto;
   box-sizing: border-box;
+  /* iOS: altura real del área útil cuando 100svh no aplica */
+  min-height: -webkit-fill-available;
 }
 
 .hotel-page {
@@ -679,6 +686,40 @@ body {
   min-height: 4.6rem;
   box-sizing: border-box;
   border-radius: 16px 16px 0 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Plegado: solo “lid” ancho con minutos bien legibles; el subtítulo ocupa altura y empuja el texto fuera de vista */
+.legend-sheet:not(.legend-sheet-expanded) .legend-sheet-head {
+  min-height: 0;
+  padding-top: 0.45rem;
+  padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
+  gap: 0.3rem;
+}
+
+.legend-sheet:not(.legend-sheet-expanded) .legend-sheet-sub {
+  display: none;
+}
+
+.legend-sheet:not(.legend-sheet-expanded) .legend-sheet-handle {
+  width: 2.75rem;
+  height: 0.28rem;
+  margin: 0 auto 0.05rem;
+  opacity: 0.65;
+}
+
+.legend-sheet:not(.legend-sheet-expanded) .legend-sheet-compact {
+  font-size: clamp(1rem, 4.25vw, 1.2rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  padding: 0.35rem 0.5rem 0.25rem;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-wrap: balance;
 }
 
 .legend-sheet-handle {
