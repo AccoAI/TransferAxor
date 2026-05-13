@@ -691,7 +691,12 @@
       btn.classList.toggle("map-recenter-btn--free", show && !followUserAndVehicle);
     }
 
-    function getTrackingViewportPadding() {
+    /**
+     * Márgenes del fitBounds alineados arriba/abajo: altura real del chrome (cabecera, apuntarse, lid)
+     * más el mismo “borde” que abajo (~10px). Antes la ruta inicial usaba +20 arriba y +36 abajo y
+     * laterales 28px, generando ~3–4 cm de banda vacía bajo el panel de paradas.
+     */
+    function getMapChromePadding() {
       const header = document.querySelector(".map-header");
       const signup = document.getElementById("clientSignup");
       const legend = document.getElementById("legend");
@@ -702,6 +707,10 @@
         bottom: (legend ? legend.offsetHeight : 72) + edge,
         left: edge
       };
+    }
+
+    function getTrackingViewportPadding() {
+      return getMapChromePadding();
     }
 
     function updateTrackingFitLoop() {
@@ -1032,23 +1041,11 @@
       return bounds;
     }
 
-    function getMapViewportPadding() {
-      const header = document.querySelector(".map-header");
-      const signup = document.getElementById("clientSignup");
-      const legend = document.getElementById("legend");
-      return {
-        top: (header ? header.offsetHeight : 48) + (signup ? signup.offsetHeight : 112) + 20,
-        right: 28,
-        bottom: (legend ? legend.offsetHeight : 84) + 36,
-        left: 28
-      };
-    }
-
     function fitRouteViewport(directionsResult) {
       if (!map) return;
       if (directionsResult) routeBounds = buildRouteBounds(directionsResult);
       if (!routeBounds) return;
-      map.fitBounds(routeBounds, getMapViewportPadding());
+      map.fitBounds(routeBounds, getMapChromePadding());
     }
 
     function scheduleFitRouteViewport(directionsResult) {

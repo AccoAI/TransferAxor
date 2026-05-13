@@ -64,12 +64,19 @@
       <div class="conductor-wait-row"><span>Terminal T4</span><strong id="wait-t4">0</strong></div>
     </section>
 
-    <p class="hint">Mantén esta página abierta en el móvil. La ubicación se envía cada pocos segundos. Si cambias a otra pestaña, el sistema puede reducir la frecuencia; al volver aquí se envía al instante.</p>
+    <p class="hint">Puedes usar otras apps o pestañas; la conexión se reintenta sola y el mapa conserva la última posición unos minutos si hay un corte breve de red o de la pestaña.</p>
   </main>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io();
+    const socket = io({
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 800,
+      reconnectionDelayMax: 15000,
+      timeout: 45000,
+      transports: ["websocket", "polling"],
+    });
     const CONDUCTOR_KEY_STORAGE = "transferAxorConductorKey";
     let selectedVehicle = null;
     let vehicleCapacity = 8;
@@ -179,6 +186,10 @@
       const token = readConductorToken() || conductorKeyEl.value.trim();
       if (token) sessionStorage.setItem(CONDUCTOR_KEY_STORAGE, token);
       showConductorPanel();
+      if (selectedVehicle) {
+        socket.emit("register", { vehicleId: selectedVehicle });
+        startTracking();
+      }
     });
 
     socket.on("conductor-auth-fail", function() {
@@ -189,6 +200,24 @@
 
     socket.on("waiting", updateWaitingDisplay);
     socket.on("scheduled-trips", updateScheduledTripsDisplay);
+
+    socket.on("connect", function() {
+      if (conductorReady) {
+        requestConductorAuth();
+      }
+    });
+
+    socket.on("disconnect", function() {
+      if (conductorReady && selectedVehicle) {
+        setStatus(false, "Conexión pausada; reintentando…");
+      }
+    });
+
+    socket.on("connect_error", function() {
+      if (conductorReady) {
+        setStatus(false, "Sin red; reintentando…");
+      }
+    });
 
     requestConductorAuth();
 

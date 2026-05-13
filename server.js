@@ -10,12 +10,23 @@ const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+
+/** Conexiones móviles en segundo plano o redes inestables: más margen antes de dar por muerto el socket */
+const io = new Server(server, {
+  pingInterval: 25000,
+  pingTimeout: 120000,
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000,
+    skipMiddlewares: true,
+  },
+});
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const CONDUCTOR_ACCESS_KEY = process.env.CONDUCTOR_ACCESS_KEY || "";
 const MAX_SIGNUP_PEOPLE = 15;
+/** Tras desconectar el conductor, mantener última posición en mapas hasta este tiempo (ms). */
+const CONDUCTOR_GRACE_MS = Number(process.env.CONDUCTOR_GRACE_MS) || 45 * 60 * 1000;
 
 const CAMPEZO_DEFAULT = { lat: 40.447914, lng: -3.583004 };
 const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t3", "t4"];
@@ -35,6 +46,26 @@ const MADRID_TZ = "Europe/Madrid";
 let activeVehicleId = null;
 let activeSocketId = null;
 const socketToVehicle = {};
+let conductorGraceTimer = null;
+
+function cancelConductorGraceTimer() {
+  if (conductorGraceTimer) {
+    clearTimeout(conductorGraceTimer);
+    conductorGraceTimer = null;
+  }
+}
+
+function scheduleConductorStaleCleanup() {
+  cancelConductorGraceTimer();
+  conductorGraceTimer = setTimeout(function() {
+    conductorGraceTimer = null;
+    if (activeSocketId !== null) return;
+    if (!activeVehicleId) return;
+    clearAllVehicles();
+    activeVehicleId = null;
+    broadcastState();
+  }, CONDUCTOR_GRACE_MS);
+}
 
 if (process.env.GOOGLE_MAPS_API_KEY) {
   app.get("/config.js", (req, res) => {
@@ -226,10 +257,16 @@ io.on("connection", (socket) => {
   socket.on("register", (data) => {
     const vehicleId = data && data.vehicleId;
     if (!vehicles[vehicleId]) return;
+    cancelConductorGraceTimer();
     if (activeSocketId && activeSocketId !== socket.id) {
       delete socketToVehicle[activeSocketId];
     }
-    clearAllVehicles();
+    const reconnectSameVehicle = activeVehicleId === vehicleId && activeSocketId === null;
+    const vehicleChange = activeVehicleId !== null && activeVehicleId !== vehicleId;
+    const firstRegistration = activeVehicleId === null;
+    if (!reconnectSameVehicle && (vehicleChange || firstRegistration)) {
+      clearAllVehicles();
+    }
     activeVehicleId = vehicleId;
     activeSocketId = socket.id;
     socketToVehicle[socket.id] = vehicleId;
@@ -316,10 +353,9 @@ io.on("connection", (socket) => {
     removeSignup(socket.id);
     removeScheduledTrip(socket.id);
     if (socket.id === activeSocketId) {
-      clearAllVehicles();
-      activeVehicleId = null;
-      activeSocketId = null;
       delete socketToVehicle[socket.id];
+      activeSocketId = null;
+      scheduleConductorStaleCleanup();
       broadcastState();
     } else {
       delete socketToVehicle[socket.id];
