@@ -325,13 +325,13 @@
     }
 
     function getMapViewportPadding() {
-      const header = document.querySelector(".map-header");
       const legend = document.getElementById("legend");
+      const edge = 8;
       return {
-        top: (header ? header.offsetHeight : 56) + 16,
-        right: 28,
-        bottom: (legend ? legend.offsetHeight : 180) + 24,
-        left: 28
+        top: edge,
+        right: edge,
+        bottom: (legend ? legend.offsetHeight : 180) + edge,
+        left: edge
       };
     }
 

@@ -155,9 +155,92 @@
       t4: "T4"
     };
     const MAX_SIGNUP_PEOPLE = 15;
+    const PASSENGER_SIGNUP_STORAGE = "transferAxorPassengerSignup";
 
-    const socket = io();
-    const signupStopEls = document.querySelectorAll(".client-signup-stop");
+    const socket = io({
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 800,
+      reconnectionDelayMax: 15000,
+      timeout: 45000,
+      transports: ["websocket", "polling"],
+    });
+    let vehiclesSocketBound = false;
+    let partyCount = 1;
+    let signedUp = false;
+    let selectedLocation = null;
+
+    function persistPassengerSignup(location, people) {
+      if (!location) return;
+      try {
+        sessionStorage.setItem(
+          PASSENGER_SIGNUP_STORAGE,
+          JSON.stringify({ location: location, people: people || 1 })
+        );
+      } catch (e) {}
+    }
+
+    function clearPassengerSignupStorage() {
+      try {
+        sessionStorage.removeItem(PASSENGER_SIGNUP_STORAGE);
+      } catch (e) {}
+    }
+
+    function reapplyStoredSignup() {
+      if (!socket.connected) return;
+      var raw = null;
+      try {
+        raw = sessionStorage.getItem(PASSENGER_SIGNUP_STORAGE);
+      } catch (e) {
+        return;
+      }
+      if (!raw) return;
+      var d;
+      try {
+        d = JSON.parse(raw);
+      } catch (e2) {
+        return;
+      }
+      if (!d || !d.location) return;
+      var n = Number(d.people);
+      if (!Number.isFinite(n)) n = 1;
+      n = Math.max(1, Math.min(MAX_SIGNUP_PEOPLE, Math.round(n)));
+      socket.emit("signup", { location: d.location, people: n });
+    }
+
+    function resyncPassengerSession() {
+      if (!socket.connected) {
+        socket.connect();
+        return;
+      }
+      if (signedUp && selectedLocation) {
+        socket.emit("signup", { location: selectedLocation, people: partyCount });
+        persistPassengerSignup(selectedLocation, partyCount);
+      } else {
+        reapplyStoredSignup();
+      }
+    }
+
+    socket.on("connect", function() {
+      resyncPassengerSession();
+    });
+
+    window.addEventListener("pageshow", function(ev) {
+      requestAnimationFrame(function() {
+        if (!socket.connected) socket.connect();
+        else resyncPassengerSession();
+        if (map) {
+          google.maps.event.trigger(map, "resize");
+          scheduleFitRouteViewport();
+        }
+      });
+    });
+
+    document.addEventListener("visibilitychange", function() {
+      if (document.visibilityState !== "visible") return;
+      if (!socket.connected) socket.connect();
+      else resyncPassengerSession();
+    });
     const partyCountEl = document.getElementById("partyCount");
     const partyMinusEl = document.getElementById("partyMinus");
     const partyPlusEl = document.getElementById("partyPlus");
@@ -166,10 +249,7 @@
     const legendEl = document.getElementById("legend");
     const legendToggleEl = document.getElementById("legendToggle");
     const legendCompactEl = document.getElementById("legendCompact");
-    let partyCount = 1;
-    let signedUp = false;
-    let selectedLocation = null;
-
+    const signupStopEls = document.querySelectorAll(".client-signup-stop");
     function setSelectedLocation(location) {
       selectedLocation = location || null;
       signupStopEls.forEach(function(btn) {
@@ -198,6 +278,7 @@
       if (!signedUp || !selectedLocation) return;
       socket.emit("signup", { location: selectedLocation, people: partyCount });
       updateSignupStatus(selectedLocation, partyCount);
+      persistPassengerSignup(selectedLocation, partyCount);
     }
 
     function changePartyCount(next) {
@@ -222,9 +303,11 @@
         setSelectedLocation(location);
         updateSignupStatus(location, people);
         followUserAndVehicle = true;
+        persistPassengerSignup(location, people);
       } else {
         setSelectedLocation(null);
         updateSignupStatus(null, 0);
+        clearPassengerSignupStorage();
       }
       updateLegendCompact();
       lastPickupRouteOrigin = null;
@@ -692,19 +775,25 @@
     }
 
     /**
-     * Márgenes del fitBounds alineados arriba/abajo: altura real del chrome (cabecera, apuntarse, lid)
-     * más el mismo “borde” que abajo (~10px). Antes la ruta inicial usaba +20 arriba y +36 abajo y
-     * laterales 28px, generando ~3–4 cm de banda vacía bajo el panel de paradas.
+     * Padding para fitBounds dentro del div #map únicamente.
+     * Cabecera y “¿Dónde esperas?” están FUERA del mapa (hermanos arriba de .map-container);
+     * si sumamos su altura aquí, Google Maps reserva banda vacía enorme arriba y casi no hace zoom in.
+     * Abajo sí hace falta la altura del lid/leyenda porque flota encima del mapa.
      */
     function getMapChromePadding() {
-      const header = document.querySelector(".map-header");
-      const signup = document.getElementById("clientSignup");
       const legend = document.getElementById("legend");
-      const edge = 10;
+      const legendToggle = document.getElementById("legendToggle");
+      const edge = 8;
+      var bottomPad = 72;
+      if (legend) {
+        bottomPad = legend.classList.contains("legend-sheet-expanded")
+          ? legend.offsetHeight
+          : (legendToggle ? legendToggle.offsetHeight : legend.offsetHeight);
+      }
       return {
-        top: (header ? header.offsetHeight : 44) + (signup ? signup.offsetHeight : 0) + edge,
+        top: edge,
         right: edge,
-        bottom: (legend ? legend.offsetHeight : 72) + edge,
+        bottom: bottomPad + edge,
         left: edge
       };
     }
@@ -1060,6 +1149,13 @@
     }
 
     function initMap() {
+      if (map) {
+        google.maps.event.trigger(map, "resize");
+        scheduleFitRouteViewport();
+        resyncPassengerSession();
+        return;
+      }
+
       map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: 40.465, lng: -3.58 },
         zoom: 11,
@@ -1165,7 +1261,10 @@
         stopPoints.push(stop);
       });
 
-      socket.on("vehicles", function(vehicles) {
+      if (!vehiclesSocketBound) {
+        vehiclesSocketBound = true;
+        socket.on("vehicles", function(vehicles) {
+          if (!map) return;
         lastVehiclesLive = {};
         vehicleIds.forEach(function(id) { lastVehiclesLive[id] = false; });
 
@@ -1219,7 +1318,8 @@
           if (signedUp && selectedLocation) updateTrackingFitLoop();
           updateRecenterButtonState();
         }
-      });
+        });
+      }
     }
   </script>
 </body>
