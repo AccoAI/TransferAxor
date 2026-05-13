@@ -327,6 +327,10 @@ io.on("connection", (socket) => {
   });
 });
 
+setInterval(function() {
+  io.emit("vehicles", getVehiclesForClients());
+}, 3000);
+
 server.listen(PORT, HOST, () => {
   console.log(`Transfer Axor: http://localhost:${PORT}`);
   console.log(`  - Cliente (mapa):  http://localhost:${PORT}`);

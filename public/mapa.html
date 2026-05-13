@@ -101,6 +101,7 @@
       <button type="button" class="legend-sheet-head" id="legendToggle" aria-expanded="false" aria-controls="legendBody">
         <span class="legend-sheet-handle" aria-hidden="true"></span>
         <span class="legend-sheet-compact" id="legendCompact">Calculando…</span>
+        <span class="legend-sheet-sub">Desliza arriba para ver todas las llegadas</span>
       </button>
       <div class="legend-sheet-body" id="legendBody">
       <div class="legend-section">
@@ -222,6 +223,8 @@
       updateLegendCompact();
       lastPickupRouteOrigin = null;
       refreshPickupRoute();
+      if (active && location) updateTrackingFitLoop();
+      else stopTrackingFitLoop();
     }
 
     partyMinusEl.addEventListener("click", function() {
@@ -436,7 +439,11 @@
       if (!legendEl || !legendToggleEl) return;
       legendEl.classList.toggle("legend-sheet-expanded", open);
       legendToggleEl.setAttribute("aria-expanded", open ? "true" : "false");
-      scheduleFitRouteViewport();
+      if (signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
+        setTimeout(fitUserAndVehicleViewport, 80);
+      } else {
+        scheduleFitRouteViewport();
+      }
     }
 
     if (legendToggleEl && legendEl) {
@@ -622,6 +629,47 @@
       const stopIndex = locationKeyToStopIndex(selectedLocation);
       if (stopIndex === null) return null;
       return getStopLatLng(stopIndex);
+    }
+
+    var trackingFitTimer = null;
+    const TRACKING_FIT_MS = 3000;
+
+    function fitUserAndVehicleViewport() {
+      if (!map || !signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      const userPt = getSignupDestinationPosition();
+      if (!userPt) return;
+      const veh = lastActiveVehicleEta;
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend(userPt);
+      bounds.extend({ lat: veh.lat, lng: veh.lng });
+      map.fitBounds(bounds, getTrackingViewportPadding());
+    }
+
+    function getTrackingViewportPadding() {
+      const base = getMapViewportPadding();
+      return {
+        top: base.top + 12,
+        right: base.right + 10,
+        bottom: base.bottom + 14,
+        left: base.left + 10
+      };
+    }
+
+    function updateTrackingFitLoop() {
+      if (trackingFitTimer) {
+        clearInterval(trackingFitTimer);
+        trackingFitTimer = null;
+      }
+      if (!signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      fitUserAndVehicleViewport();
+      trackingFitTimer = setInterval(fitUserAndVehicleViewport, TRACKING_FIT_MS);
+    }
+
+    function stopTrackingFitLoop() {
+      if (trackingFitTimer) {
+        clearInterval(trackingFitTimer);
+        trackingFitTimer = null;
+      }
     }
 
     function buildCircuitWaypoints(currentLeg, destinationStopIndex) {
@@ -989,7 +1037,11 @@
       });
 
       window.addEventListener("resize", function() {
-        scheduleFitRouteViewport();
+        if (signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
+          fitUserAndVehicleViewport();
+        } else {
+          scheduleFitRouteViewport();
+        }
       });
 
       // Icono visible para paradas: círculo con letra (hotel H, terminales T1–T4)
@@ -1045,6 +1097,7 @@
         if (!activeOne) {
           lastActiveVehicleEta = null;
           clearPickupRoute();
+          stopTrackingFitLoop();
         }
         setVehicleRowActive(activeVehicleIdOnMap);
 
@@ -1081,6 +1134,7 @@
           setPaxForVehicle(id, v.passengers, v.capacity, true);
           updateEtaFromGoogle(id, v.lat, v.lng, label, directionsService);
           updatePickupRoute(v.lat, v.lng, directionsService);
+          if (signedUp && selectedLocation) updateTrackingFitLoop();
         }
       });
     }

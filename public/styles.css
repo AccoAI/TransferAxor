@@ -605,12 +605,16 @@ body {
   gap: 0;
   max-height: none;
   overflow: hidden;
+  z-index: 2100;
+  pointer-events: auto;
+  isolation: isolate;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.35);
 }
 
 .legend-sheet-head {
   width: 100%;
   border: 0;
-  background: transparent;
+  background: rgba(26, 35, 50, 0.98);
   padding: 0.55rem 0.8rem 0.5rem;
   display: flex;
   flex-direction: column;
@@ -619,6 +623,8 @@ body {
   cursor: pointer;
   color: inherit;
   font: inherit;
+  min-height: 3.25rem;
+  border-radius: 10px;
 }
 
 .legend-sheet-handle {
@@ -637,6 +643,14 @@ body {
   color: var(--text);
 }
 
+.legend-sheet-sub {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--muted);
+  text-align: center;
+}
+
 .legend-sheet-body {
   max-height: 0;
   overflow: hidden;
@@ -652,6 +666,11 @@ body {
 
 .legend-sheet-expanded .legend-sheet-head {
   border-bottom: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
+}
+
+.legend-sheet-expanded .legend-sheet-sub {
+  display: none;
 }
 
 .display-board .legend-eta-title {
