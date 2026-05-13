@@ -43,14 +43,16 @@
       <button type="button" class="client-signup-stop" data-location="t4">T4</button>
     </div>
     <div class="client-signup-dest" id="hotelDestRow" hidden>
-      <span class="client-signup-label">¿A dónde vas?</span>
-      <div class="client-signup-stops client-signup-dest-stops" id="hotelDestStops" role="group" aria-label="Destino desde el hotel">
-        <button type="button" class="client-signup-stop client-signup-dest" data-dest="t1">T1</button>
-        <button type="button" class="client-signup-stop client-signup-dest" data-dest="t2">T2</button>
-        <button type="button" class="client-signup-stop client-signup-dest" data-dest="t3">T3</button>
-        <button type="button" class="client-signup-stop client-signup-dest" data-dest="t4">T4</button>
-        <button type="button" class="client-signup-stop client-signup-dest" data-dest="ifema">IFEMA</button>
-        <button type="button" class="client-signup-stop client-signup-dest" data-dest="simuladores">Simuladores</button>
+      <div class="client-signup-dest-inner">
+        <span class="client-signup-label client-signup-dest-label">Destino</span>
+        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino desde el hotel: T1, T2, T3, T4, IFEMA o Simuladores">
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t1">T1</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t2">T2</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t3">T3</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t4">T4</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="ifema">IFEMA</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="simuladores">Simuladores</button>
+        </div>
       </div>
     </div>
     <div class="client-signup-party">
@@ -194,6 +196,9 @@
     let signedUp = false;
     let selectedLocation = null;
     let tripDestination = null;
+    /** Tras apuntarse en terminal, si pulsa Hotel: cancelamos y abrimos el selector de destino del hotel. */
+    let pendingSwitchToHotelAfterCancel = false;
+    const TERMINAL_LOCATIONS = { t1: true, t2: true, t3: true, t4: true };
 
     function getPickupRouteCacheKey() {
       if (!signedUp || !selectedLocation) return "";
@@ -323,7 +328,7 @@
     function syncHotelDestButtons() {
       hotelDestStopEls.forEach(function(btn) {
         btn.classList.toggle("active", btn.dataset.dest === tripDestination);
-        btn.disabled = signedUp && selectedLocation === "hotel";
+        btn.disabled = false;
       });
     }
 
@@ -350,7 +355,9 @@
     }
 
     function submitSignupAtTerminal(location) {
-      if (signedUp || !location) return;
+      if (!location || !TERMINAL_LOCATIONS[location]) return;
+      pendingSwitchToHotelAfterCancel = false;
+      if (signedUp && selectedLocation === location) return;
       tripDestination = null;
       setSelectedLocation(location);
       syncHotelDestRow();
@@ -358,7 +365,12 @@
     }
 
     function beginHotelSignupFlow() {
-      if (signedUp) return;
+      if (signedUp) {
+        if (selectedLocation === "hotel") return;
+        pendingSwitchToHotelAfterCancel = true;
+        socket.emit("cancel-signup");
+        return;
+      }
       setSelectedLocation("hotel");
       tripDestination = null;
       syncHotelDestRow();
@@ -404,9 +416,6 @@
 
     function setSignedUp(active, location, people) {
       signedUp = active;
-      signupStopEls.forEach(function(btn) {
-        btn.disabled = active;
-      });
       cancelSignupBtnEl.hidden = !active;
       if (active && location) {
         setSelectedLocation(location);
@@ -454,6 +463,7 @@
     });
 
     cancelSignupBtnEl.addEventListener("click", function() {
+      pendingSwitchToHotelAfterCancel = false;
       socket.emit("cancel-signup");
     });
 
@@ -462,6 +472,7 @@
       const people = data && data.people ? data.people : 1;
       const destination = data && data.destination;
       if (location) {
+        pendingSwitchToHotelAfterCancel = false;
         partyCount = people;
         updatePartyControls();
         if (location === "hotel") {
@@ -472,8 +483,11 @@
         setSignedUp(true, location, people);
       } else {
         tripDestination = null;
+        const openHotelPicker = pendingSwitchToHotelAfterCancel;
+        pendingSwitchToHotelAfterCancel = false;
         setSignedUp(false, null, 0);
         updatePartyControls();
+        if (openHotelPicker) beginHotelSignupFlow();
       }
     });
 
