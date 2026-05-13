@@ -42,6 +42,17 @@
       <button type="button" class="client-signup-stop" data-location="t3">T3</button>
       <button type="button" class="client-signup-stop" data-location="t4">T4</button>
     </div>
+    <div class="client-signup-dest" id="hotelDestRow" hidden>
+      <span class="client-signup-label">¿A dónde vas?</span>
+      <div class="client-signup-stops client-signup-dest-stops" id="hotelDestStops" role="group" aria-label="Destino desde el hotel">
+        <button type="button" class="client-signup-stop client-signup-dest" data-dest="t1">T1</button>
+        <button type="button" class="client-signup-stop client-signup-dest" data-dest="t2">T2</button>
+        <button type="button" class="client-signup-stop client-signup-dest" data-dest="t3">T3</button>
+        <button type="button" class="client-signup-stop client-signup-dest" data-dest="t4">T4</button>
+        <button type="button" class="client-signup-stop client-signup-dest" data-dest="ifema">IFEMA</button>
+        <button type="button" class="client-signup-stop client-signup-dest" data-dest="simuladores">Simuladores</button>
+      </div>
+    </div>
     <div class="client-signup-party">
       <span class="client-signup-party-label">Personas</span>
       <button type="button" class="client-signup-step" id="partyMinus" aria-label="Quitar persona">−</button>
@@ -133,6 +144,9 @@
       { lat: 40.47044, lng: -3.57117, name: "Terminal T3 Barajas", link: "https://maps.app.goo.gl/R91V3qW8t1vhRaMo6" },
       { lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
     ];
+    const IFEMA = { lat: 40.4643, lng: -3.6167 };
+    /** Zona simuladores / formación vuelo en recinto Barajas (ajustar coordenadas si usáis otro punto exacto). */
+    const SIMULADORES = { lat: 40.4708, lng: -3.5642 };
 
     const vehicleIds = ["vito1", "vito2", "vito3", "vito4", "minibus"];
     const colors = { vito1: "#f59e0b", vito2: "#10b981", vito3: "#8b5cf6", vito4: "#ec4899", minibus: "#ef4444" };
@@ -147,12 +161,22 @@
       t3: "Terminal T3",
       t4: "Terminal T4"
     };
+    const DESTINATION_LABELS = {
+      t1: "T1",
+      t2: "T2",
+      t3: "T3",
+      t4: "T4",
+      ifema: "IFEMA",
+      simuladores: "Simuladores"
+    };
     const LOCATION_TO_ROUTE_STOP = {
       hotel: "Hotel",
       t1: "T1",
       t2: "T2",
       t3: "T3",
-      t4: "T4"
+      t4: "T4",
+      ifema: "IFEMA",
+      simuladores: "Simuladores"
     };
     const MAX_SIGNUP_PEOPLE = 15;
     const PASSENGER_SIGNUP_STORAGE = "transferAxorPassengerSignup";
@@ -169,13 +193,36 @@
     let partyCount = 1;
     let signedUp = false;
     let selectedLocation = null;
+    let tripDestination = null;
 
-    function persistPassengerSignup(location, people) {
+    function getPickupRouteCacheKey() {
+      if (!signedUp || !selectedLocation) return "";
+      if (selectedLocation === "hotel") return "hotel|" + (tripDestination || "");
+      return selectedLocation;
+    }
+
+    function getEffectiveTripDestinationKey() {
+      if (!signedUp || !selectedLocation) return null;
+      if (selectedLocation === "hotel") return tripDestination || null;
+      return selectedLocation;
+    }
+
+    function buildSignupPayload() {
+      const payload = { location: selectedLocation, people: partyCount };
+      if (selectedLocation === "hotel" && tripDestination) payload.destination = tripDestination;
+      return payload;
+    }
+
+    function persistPassengerSignup(location, people, destination) {
       if (!location) return;
       try {
         sessionStorage.setItem(
           PASSENGER_SIGNUP_STORAGE,
-          JSON.stringify({ location: location, people: people || 1 })
+          JSON.stringify({
+            location: location,
+            people: people || 1,
+            destination: location === "hotel" ? (destination || null) : null
+          })
         );
       } catch (e) {}
     }
@@ -205,7 +252,13 @@
       var n = Number(d.people);
       if (!Number.isFinite(n)) n = 1;
       n = Math.max(1, Math.min(MAX_SIGNUP_PEOPLE, Math.round(n)));
-      socket.emit("signup", { location: d.location, people: n });
+      const payload = { location: d.location, people: n };
+      if (d.location === "hotel") {
+        const dest = String(d.destination || "").toLowerCase();
+        if (!dest) return;
+        payload.destination = dest;
+      }
+      socket.emit("signup", payload);
     }
 
     function resyncPassengerSession() {
@@ -214,8 +267,9 @@
         return;
       }
       if (signedUp && selectedLocation) {
-        socket.emit("signup", { location: selectedLocation, people: partyCount });
-        persistPassengerSignup(selectedLocation, partyCount);
+        if (selectedLocation === "hotel" && !tripDestination) return;
+        socket.emit("signup", buildSignupPayload());
+        persistPassengerSignup(selectedLocation, partyCount, tripDestination);
       } else {
         reapplyStoredSignup();
       }
@@ -256,12 +310,28 @@
     const legendEl = document.getElementById("legend");
     const legendToggleEl = document.getElementById("legendToggle");
     const legendCompactEl = document.getElementById("legendCompact");
-    const signupStopEls = document.querySelectorAll(".client-signup-stop");
+    const signupStopEls = document.querySelectorAll("#signupStops .client-signup-stop");
+    const hotelDestRowEl = document.getElementById("hotelDestRow");
+    const hotelDestStopEls = document.querySelectorAll("#hotelDestStops .client-signup-dest");
     function setSelectedLocation(location) {
       selectedLocation = location || null;
       signupStopEls.forEach(function(btn) {
         btn.classList.toggle("active", btn.dataset.location === selectedLocation);
       });
+    }
+
+    function syncHotelDestButtons() {
+      hotelDestStopEls.forEach(function(btn) {
+        btn.classList.toggle("active", btn.dataset.dest === tripDestination);
+        btn.disabled = signedUp && selectedLocation === "hotel";
+      });
+    }
+
+    function syncHotelDestRow() {
+      if (!hotelDestRowEl) return;
+      const show = (!signedUp && selectedLocation === "hotel") || (signedUp && selectedLocation === "hotel");
+      hotelDestRowEl.hidden = !show;
+      syncHotelDestButtons();
     }
 
     function updateSignupStatus(location, people) {
@@ -270,22 +340,54 @@
         return;
       }
       const label = SIGNUP_LABELS[location] || location;
+      const destHint =
+        location === "hotel" && tripDestination
+          ? " → " + (DESTINATION_LABELS[tripDestination] || tripDestination)
+          : "";
       signupStatusEl.textContent = people > 1
-        ? "Apuntado en " + label + " (" + people + " personas)"
-        : "Apuntado en " + label;
+        ? "Apuntado en " + label + destHint + " (" + people + " personas)"
+        : "Apuntado en " + label + destHint;
     }
 
-    function submitSignup(location) {
+    function submitSignupAtTerminal(location) {
       if (signedUp || !location) return;
+      tripDestination = null;
       setSelectedLocation(location);
+      syncHotelDestRow();
       socket.emit("signup", { location: location, people: partyCount });
+    }
+
+    function beginHotelSignupFlow() {
+      if (signedUp) return;
+      setSelectedLocation("hotel");
+      tripDestination = null;
+      syncHotelDestRow();
+      signupStatusEl.textContent = "Elige destino: T1, T2, T3, T4, IFEMA o Simuladores";
+    }
+
+    function submitHotelSignupWithDestination(dest) {
+      if (!dest) return;
+      if (!signedUp) {
+        if (selectedLocation !== "hotel") return;
+        tripDestination = dest;
+        syncHotelDestButtons();
+        socket.emit("signup", { location: "hotel", destination: dest, people: partyCount });
+        return;
+      }
+      if (selectedLocation !== "hotel") return;
+      tripDestination = dest;
+      syncHotelDestButtons();
+      socket.emit("signup", buildSignupPayload());
+      persistPassengerSignup("hotel", partyCount, tripDestination);
+      updateSignupStatus("hotel", partyCount);
     }
 
     function syncSignupPeople() {
       if (!signedUp || !selectedLocation) return;
-      socket.emit("signup", { location: selectedLocation, people: partyCount });
+      if (selectedLocation === "hotel" && !tripDestination) return;
+      socket.emit("signup", buildSignupPayload());
       updateSignupStatus(selectedLocation, partyCount);
-      persistPassengerSignup(selectedLocation, partyCount);
+      persistPassengerSignup(selectedLocation, partyCount, tripDestination);
     }
 
     function changePartyCount(next) {
@@ -310,12 +412,14 @@
         setSelectedLocation(location);
         updateSignupStatus(location, people);
         followUserAndVehicle = true;
-        persistPassengerSignup(location, people);
+        persistPassengerSignup(location, people, location === "hotel" ? tripDestination : null);
       } else {
         setSelectedLocation(null);
+        tripDestination = null;
         updateSignupStatus(null, 0);
         clearPassengerSignupStorage();
       }
+      syncHotelDestRow();
       updateLegendCompact();
       lastPickupRouteOrigin = null;
       refreshPickupRoute();
@@ -337,7 +441,15 @@
 
     signupStopEls.forEach(function(btn) {
       btn.addEventListener("click", function() {
-        submitSignup(btn.dataset.location);
+        const loc = btn.dataset.location;
+        if (loc === "hotel") beginHotelSignupFlow();
+        else submitSignupAtTerminal(loc);
+      });
+    });
+
+    hotelDestStopEls.forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        submitHotelSignupWithDestination(btn.dataset.dest);
       });
     });
 
@@ -348,11 +460,18 @@
     socket.on("signup-status", function(data) {
       const location = data && data.location;
       const people = data && data.people ? data.people : 1;
+      const destination = data && data.destination;
       if (location) {
         partyCount = people;
         updatePartyControls();
+        if (location === "hotel") {
+          tripDestination = destination ? String(destination).toLowerCase() : null;
+        } else {
+          tripDestination = null;
+        }
         setSignedUp(true, location, people);
       } else {
+        tripDestination = null;
         setSignedUp(false, null, 0);
         updatePartyControls();
       }
@@ -539,7 +658,7 @@
       if (!legendEl || !legendToggleEl) return;
       legendEl.classList.toggle("legend-sheet-expanded", open);
       legendToggleEl.setAttribute("aria-expanded", open ? "true" : "false");
-      if (followUserAndVehicle && signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
+      if (followUserAndVehicle && hasSignupDestinationReady() && activeVehicleIdOnMap && lastActiveVehicleEta) {
         setTimeout(fitUserAndVehicleViewport, 80);
       } else if (!signedUp || !activeVehicleIdOnMap) {
         scheduleFitRouteViewport();
@@ -559,9 +678,29 @@
       return minutes + " min";
     }
 
+    let map;
+    let directionsRenderer;
+    let pickupDirectionsRenderer = null;
+    let directionsServiceInstance = null;
+    let lastPickupRouteOrigin = null;
+    let lastPickupDirectionsResult = null;
+    const PICKUP_ROUTE_THROTTLE_KM = 0.25;
+    const vehicleMarkers = {};
+    const vehicleMeta = {};
+    const stopPoints = [];
+    var lastVehiclesLive = {};
+    var activeVehicleIdOnMap = null;
+    var lastActiveVehicleEta = null;
+    // Duraciones de cada tramo del circuito (segundos), rellenado cuando carga la ruta: [Hotel→T1, T1→T2, T2→T3, T3→T4, T4→Hotel]
+    let routeLegDurationsSec = null;
+    const PARADA_TERMINAL_MIN = 4;
+    const ROUTE_STOP_NAMES = ["T1", "T2", "T3", "T4", "Hotel"];
+    const MADRID_TZ = "Europe/Madrid";
+
     function getDestinationStopName() {
-      if (signedUp && selectedLocation) return LOCATION_TO_ROUTE_STOP[selectedLocation] || null;
-      return null;
+      const key = getEffectiveTripDestinationKey();
+      if (!key) return null;
+      return LOCATION_TO_ROUTE_STOP[key] || null;
     }
 
     function computeEtaSecondsToStop(currentLeg, remainingOnLegSec, departureWaitSec, stopName) {
@@ -584,6 +723,10 @@
 
     function getStopEtaSecondsRemaining(meta, stopName) {
       if (!meta) return null;
+      if ((stopName === "IFEMA" || stopName === "Simuladores") && Number.isFinite(meta.pickupRouteTotalSec)) {
+        const elapsed = (Date.now() - (meta.pickupRouteAt || Date.now())) / 1000;
+        return Math.max(0, meta.pickupRouteTotalSec - elapsed);
+      }
       let baseSec = null;
       if (meta.stopEtas && meta.stopEtas.length) {
         const hit = meta.stopEtas.find(function(stop) { return stop.name === stopName; });
@@ -620,31 +763,16 @@
         legendCompactEl.textContent = "Calculando…";
         return;
       }
-      const label = SIGNUP_LABELS[selectedLocation] || destination;
+      const baseLabel = SIGNUP_LABELS[selectedLocation] || selectedLocation;
+      const destSuffix = selectedLocation === "hotel" && tripDestination
+        ? " · " + (DESTINATION_LABELS[tripDestination] || tripDestination)
+        : "";
+      const label = baseLabel + destSuffix;
       const vehicleLabel = meta.label || vehicleId;
       legendCompactEl.textContent = vehicleLabel + " · " + label + " en " + formatMinutesDelta(remaining);
     }
 
     setInterval(updateLegendCompact, 10000);
-
-    let map;
-    let directionsRenderer;
-    let pickupDirectionsRenderer = null;
-    let directionsServiceInstance = null;
-    let lastPickupRouteOrigin = null;
-    let lastPickupDirectionsResult = null;
-    const PICKUP_ROUTE_THROTTLE_KM = 0.25;
-    const vehicleMarkers = {};
-    const vehicleMeta = {};
-    const stopPoints = [];
-    var lastVehiclesLive = {};
-    var activeVehicleIdOnMap = null;
-    var lastActiveVehicleEta = null;
-    // Duraciones de cada tramo del circuito (segundos), rellenado cuando carga la ruta: [Hotel→T1, T1→T2, T2→T3, T3→T4, T4→Hotel]
-    let routeLegDurationsSec = null;
-    const PARADA_TERMINAL_MIN = 4;
-    const ROUTE_STOP_NAMES = ["T1", "T2", "T3", "T4", "Hotel"];
-    const MADRID_TZ = "Europe/Madrid";
 
     function distanceKm(lat1, lon1, lat2, lon2) {
       const R = 6371;
@@ -727,9 +855,19 @@
 
     function getSignupDestinationPosition() {
       if (!signedUp || !selectedLocation) return null;
-      const stopIndex = locationKeyToStopIndex(selectedLocation);
+      const key = getEffectiveTripDestinationKey();
+      if (!key) return null;
+      if (key === "ifema") return { lat: IFEMA.lat, lng: IFEMA.lng };
+      if (key === "simuladores") return { lat: SIMULADORES.lat, lng: SIMULADORES.lng };
+      const stopIndex = locationKeyToStopIndex(key);
       if (stopIndex === null) return null;
       return getStopLatLng(stopIndex);
+    }
+
+    function hasSignupDestinationReady() {
+      if (!signedUp || !selectedLocation) return false;
+      if (selectedLocation === "hotel") return !!tripDestination;
+      return true;
     }
 
     var trackingFitTimer = null;
@@ -739,7 +877,7 @@
 
     function fitUserAndVehicleViewport() {
       if (!map || !followUserAndVehicle) return;
-      if (!signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      if (!hasSignupDestinationReady() || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
       const userPt = getSignupDestinationPosition();
       if (!userPt) return;
       const veh = lastActiveVehicleEta;
@@ -758,14 +896,14 @@
 
     function onMapUserGesture() {
       if (mapMoveFromCode || !map) return;
-      if (!signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      if (!hasSignupDestinationReady() || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
       followUserAndVehicle = false;
       stopTrackingFitLoop();
       updateRecenterButtonState();
     }
 
     function recenterMapOnUserAndVehicle() {
-      if (!map || !signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      if (!map || !hasSignupDestinationReady() || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
       followUserAndVehicle = true;
       fitUserAndVehicleViewport();
       updateTrackingFitLoop();
@@ -775,7 +913,8 @@
     function updateRecenterButtonState() {
       const btn = document.getElementById("mapRecenterBtn");
       if (!btn) return;
-      const show = signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta;
+      const show =
+        hasSignupDestinationReady() && activeVehicleIdOnMap && lastActiveVehicleEta;
       btn.hidden = !show;
       btn.classList.toggle("map-recenter-btn--following", show && followUserAndVehicle);
       btn.classList.toggle("map-recenter-btn--free", show && !followUserAndVehicle);
@@ -814,7 +953,7 @@
         clearInterval(trackingFitTimer);
         trackingFitTimer = null;
       }
-      if (!signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      if (!hasSignupDestinationReady() || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
       if (!followUserAndVehicle) return;
       fitUserAndVehicleViewport();
       trackingFitTimer = setInterval(function() {
@@ -855,6 +994,13 @@
     }
 
     function clearPickupRoute() {
+      if (activeVehicleIdOnMap) {
+        const m = vehicleMeta[activeVehicleIdOnMap];
+        if (m) {
+          delete m.pickupRouteTotalSec;
+          delete m.pickupRouteAt;
+        }
+      }
       if (pickupDirectionsRenderer) pickupDirectionsRenderer.setMap(null);
       lastPickupRouteOrigin = null;
       lastPickupDirectionsResult = null;
@@ -880,32 +1026,21 @@
         clearPickupRoute();
         return;
       }
-      const routeKey = selectedLocation;
+      const destKey = getEffectiveTripDestinationKey();
+      if (!destKey) {
+        clearPickupRoute();
+        return;
+      }
+      const routeKey = getPickupRouteCacheKey();
       const last = lastPickupRouteOrigin;
       if (last && last.key === routeKey && distanceKm(lat, lng, last.lat, last.lng) < PICKUP_ROUTE_THROTTLE_KM) return;
 
       const currentLeg = getCurrentLegIndex(lat, lng);
-      const destinationStopIndex = locationKeyToStopIndex(selectedLocation);
-      if (destinationStopIndex === null) {
-        clearPickupRoute();
-        return;
-      }
-      const waypoints = buildCircuitWaypoints(currentLeg, destinationStopIndex);
+      const requestSnap = routeKey;
       lastPickupRouteOrigin = { lat: lat, lng: lng, key: routeKey };
 
-      directionsService.route({
-        origin: { lat: lat, lng: lng },
-        destination: destination,
-        waypoints: waypoints,
-        optimizeWaypoints: false,
-        travelMode: google.maps.TravelMode.DRIVING,
-        region: "es"
-      }, function(result, status) {
-        if (status !== google.maps.DirectionsStatus.OK) {
-          clearPickupRoute();
-          return;
-        }
-        if (!signedUp || selectedLocation !== routeKey) return;
+      function applyPickupDirectionsResult(result) {
+        if (!signedUp || getPickupRouteCacheKey() !== requestSnap) return;
         if (!pickupDirectionsRenderer) {
           pickupDirectionsRenderer = new google.maps.DirectionsRenderer({
             map: map,
@@ -923,11 +1058,61 @@
         }
         pickupDirectionsRenderer.setDirections(result);
         lastPickupDirectionsResult = result;
-        if (followUserAndVehicle && signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
+        const aid = activeVehicleIdOnMap;
+        if (aid && result.routes && result.routes[0]) {
+          const meta = vehicleMeta[aid] || {};
+          var totalSec = 0;
+          result.routes[0].legs.forEach(function(leg) {
+            totalSec += leg.duration.value;
+          });
+          meta.pickupRouteTotalSec = totalSec;
+          meta.pickupRouteAt = Date.now();
+          vehicleMeta[aid] = meta;
+          updateLegendCompact();
+        }
+        if (followUserAndVehicle && hasSignupDestinationReady() && activeVehicleIdOnMap && lastActiveVehicleEta) {
           requestAnimationFrame(function() {
             fitUserAndVehicleViewport();
           });
         }
+      }
+
+      if (destKey === "ifema" || destKey === "simuladores") {
+        const destPoint = destKey === "ifema" ? IFEMA : SIMULADORES;
+        directionsService.route({
+          origin: { lat: lat, lng: lng },
+          destination: destPoint,
+          travelMode: google.maps.TravelMode.DRIVING,
+          region: "es"
+        }, function(result, status) {
+          if (status !== google.maps.DirectionsStatus.OK) {
+            clearPickupRoute();
+            return;
+          }
+          applyPickupDirectionsResult(result);
+        });
+        return;
+      }
+
+      const destinationStopIndex = locationKeyToStopIndex(destKey);
+      if (destinationStopIndex === null) {
+        clearPickupRoute();
+        return;
+      }
+      const waypoints = buildCircuitWaypoints(currentLeg, destinationStopIndex);
+      directionsService.route({
+        origin: { lat: lat, lng: lng },
+        destination: destination,
+        waypoints: waypoints,
+        optimizeWaypoints: false,
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      }, function(result, status) {
+        if (status !== google.maps.DirectionsStatus.OK) {
+          clearPickupRoute();
+          return;
+        }
+        applyPickupDirectionsResult(result);
       });
     }
 
@@ -1241,7 +1426,7 @@
       });
 
       window.addEventListener("resize", function() {
-        if (followUserAndVehicle && signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
+        if (followUserAndVehicle && hasSignupDestinationReady() && activeVehicleIdOnMap && lastActiveVehicleEta) {
           fitUserAndVehicleViewport();
         } else if (!signedUp || !activeVehicleIdOnMap) {
           scheduleFitRouteViewport();

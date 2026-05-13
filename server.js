@@ -30,6 +30,7 @@ const CONDUCTOR_GRACE_MS = Number(process.env.CONDUCTOR_GRACE_MS) || 45 * 60 * 1
 
 const CAMPEZO_DEFAULT = { lat: 40.447914, lng: -3.583004 };
 const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t3", "t4"];
+const HOTEL_DESTINATIONS = new Set(["t1", "t2", "t3", "t4", "ifema", "simuladores"]);
 
 const vehicles = {
   vito1: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito 1", capacity: 8, passengers: 0, lastUpdate: null },
@@ -233,6 +234,7 @@ io.on("connection", (socket) => {
     socket.emit("signup-status", {
       location: existingSignup.location,
       people: existingSignup.people || 1,
+      destination: existingSignup.destination || null,
     });
   }
 
@@ -297,8 +299,14 @@ io.on("connection", (socket) => {
     const location = data && data.location;
     if (!WAITING_LOCATIONS.includes(location)) return;
     const people = clampSignupPeople(data && data.people);
-    signups.set(socket.id, { location, people });
-    socket.emit("signup-status", { location, people });
+    let destination = null;
+    if (location === "hotel") {
+      const d = String((data && data.destination) || "").toLowerCase();
+      if (!HOTEL_DESTINATIONS.has(d)) return;
+      destination = d;
+    }
+    signups.set(socket.id, { location, people, destination });
+    socket.emit("signup-status", { location, people, destination });
     broadcastState();
   });
 
