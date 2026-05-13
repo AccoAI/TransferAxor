@@ -97,6 +97,11 @@
 
   <div class="map-container">
     <div id="map"></div>
+    <button type="button" class="map-recenter-btn" id="mapRecenterBtn" hidden aria-label="Centrar en mi parada y el transfer" title="Centrar mapa">
+      <svg class="map-recenter-icon" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path fill="currentColor" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+      </svg>
+    </button>
     <div class="legend display-board legend-sheet" id="legend">
       <button type="button" class="legend-sheet-head" id="legendToggle" aria-expanded="false" aria-controls="legendBody">
         <span class="legend-sheet-handle" aria-hidden="true"></span>
@@ -216,6 +221,7 @@
       if (active && location) {
         setSelectedLocation(location);
         updateSignupStatus(location, people);
+        followUserAndVehicle = true;
       } else {
         setSelectedLocation(null);
         updateSignupStatus(null, 0);
@@ -224,7 +230,11 @@
       lastPickupRouteOrigin = null;
       refreshPickupRoute();
       if (active && location) updateTrackingFitLoop();
-      else stopTrackingFitLoop();
+      else {
+        stopTrackingFitLoop();
+        followUserAndVehicle = true;
+      }
+      updateRecenterButtonState();
     }
 
     partyMinusEl.addEventListener("click", function() {
@@ -439,9 +449,9 @@
       if (!legendEl || !legendToggleEl) return;
       legendEl.classList.toggle("legend-sheet-expanded", open);
       legendToggleEl.setAttribute("aria-expanded", open ? "true" : "false");
-      if (signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
+      if (followUserAndVehicle && signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
         setTimeout(fitUserAndVehicleViewport, 80);
-      } else {
+      } else if (!signedUp || !activeVehicleIdOnMap) {
         scheduleFitRouteViewport();
       }
     }
@@ -532,6 +542,7 @@
     let pickupDirectionsRenderer = null;
     let directionsServiceInstance = null;
     let lastPickupRouteOrigin = null;
+    let lastPickupDirectionsResult = null;
     const PICKUP_ROUTE_THROTTLE_KM = 0.25;
     const vehicleMarkers = {};
     const vehicleMeta = {};
@@ -633,25 +644,63 @@
 
     var trackingFitTimer = null;
     const TRACKING_FIT_MS = 3000;
+    var followUserAndVehicle = true;
+    var mapMoveFromCode = false;
 
     function fitUserAndVehicleViewport() {
-      if (!map || !signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      if (!map || !followUserAndVehicle) return;
+      if (!signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
       const userPt = getSignupDestinationPosition();
       if (!userPt) return;
       const veh = lastActiveVehicleEta;
       const bounds = new google.maps.LatLngBounds();
+      if (lastPickupDirectionsResult) {
+        extendBoundsFromDirectionsResult(bounds, lastPickupDirectionsResult);
+      }
       bounds.extend(userPt);
       bounds.extend({ lat: veh.lat, lng: veh.lng });
+      mapMoveFromCode = true;
       map.fitBounds(bounds, getTrackingViewportPadding());
+      google.maps.event.addListenerOnce(map, "idle", function() {
+        mapMoveFromCode = false;
+      });
+    }
+
+    function onMapUserGesture() {
+      if (mapMoveFromCode || !map) return;
+      if (!signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      followUserAndVehicle = false;
+      stopTrackingFitLoop();
+      updateRecenterButtonState();
+    }
+
+    function recenterMapOnUserAndVehicle() {
+      if (!map || !signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      followUserAndVehicle = true;
+      fitUserAndVehicleViewport();
+      updateTrackingFitLoop();
+      updateRecenterButtonState();
+    }
+
+    function updateRecenterButtonState() {
+      const btn = document.getElementById("mapRecenterBtn");
+      if (!btn) return;
+      const show = signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta;
+      btn.hidden = !show;
+      btn.classList.toggle("map-recenter-btn--following", show && followUserAndVehicle);
+      btn.classList.toggle("map-recenter-btn--free", show && !followUserAndVehicle);
     }
 
     function getTrackingViewportPadding() {
-      const base = getMapViewportPadding();
+      const header = document.querySelector(".map-header");
+      const signup = document.getElementById("clientSignup");
+      const legend = document.getElementById("legend");
+      const edge = 10;
       return {
-        top: base.top + 12,
-        right: base.right + 10,
-        bottom: base.bottom + 14,
-        left: base.left + 10
+        top: (header ? header.offsetHeight : 44) + (signup ? signup.offsetHeight : 0) + edge,
+        right: edge,
+        bottom: (legend ? legend.offsetHeight : 72) + edge,
+        left: edge
       };
     }
 
@@ -661,8 +710,11 @@
         trackingFitTimer = null;
       }
       if (!signedUp || !selectedLocation || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
+      if (!followUserAndVehicle) return;
       fitUserAndVehicleViewport();
-      trackingFitTimer = setInterval(fitUserAndVehicleViewport, TRACKING_FIT_MS);
+      trackingFitTimer = setInterval(function() {
+        if (followUserAndVehicle) fitUserAndVehicleViewport();
+      }, TRACKING_FIT_MS);
     }
 
     function stopTrackingFitLoop() {
@@ -700,6 +752,21 @@
     function clearPickupRoute() {
       if (pickupDirectionsRenderer) pickupDirectionsRenderer.setMap(null);
       lastPickupRouteOrigin = null;
+      lastPickupDirectionsResult = null;
+    }
+
+    function extendBoundsFromDirectionsResult(bounds, directionsResult) {
+      if (!directionsResult || !directionsResult.routes || !directionsResult.routes[0]) return;
+      const route = directionsResult.routes[0];
+      if (route.overview_path && route.overview_path.length) {
+        route.overview_path.forEach(function(pt) {
+          bounds.extend(pt);
+        });
+      }
+      route.legs.forEach(function(leg) {
+        bounds.extend(leg.start_location);
+        bounds.extend(leg.end_location);
+      });
     }
 
     function updatePickupRoute(lat, lng, directionsService) {
@@ -750,6 +817,12 @@
           pickupDirectionsRenderer.setMap(map);
         }
         pickupDirectionsRenderer.setDirections(result);
+        lastPickupDirectionsResult = result;
+        if (followUserAndVehicle && signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
+          requestAnimationFrame(function() {
+            fitUserAndVehicleViewport();
+          });
+        }
       });
     }
 
@@ -1037,12 +1110,23 @@
       });
 
       window.addEventListener("resize", function() {
-        if (signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
+        if (followUserAndVehicle && signedUp && selectedLocation && activeVehicleIdOnMap && lastActiveVehicleEta) {
           fitUserAndVehicleViewport();
-        } else {
+        } else if (!signedUp || !activeVehicleIdOnMap) {
           scheduleFitRouteViewport();
         }
       });
+
+      map.addListener("dragstart", onMapUserGesture);
+      map.addListener("zoom_changed", onMapUserGesture);
+
+      const recenterBtn = document.getElementById("mapRecenterBtn");
+      if (recenterBtn) {
+        recenterBtn.addEventListener("click", function(event) {
+          event.stopPropagation();
+          recenterMapOnUserAndVehicle();
+        });
+      }
 
       // Icono visible para paradas: círculo con letra (hotel H, terminales T1–T4)
       function makeStopIcon(letter, color) {
@@ -1100,6 +1184,7 @@
           stopTrackingFitLoop();
         }
         setVehicleRowActive(activeVehicleIdOnMap);
+        updateRecenterButtonState();
 
         var activeId = activeOne ? activeOne.id : null;
         vehicleIds.forEach(function(id) {
@@ -1135,6 +1220,7 @@
           updateEtaFromGoogle(id, v.lat, v.lng, label, directionsService);
           updatePickupRoute(v.lat, v.lng, directionsService);
           if (signedUp && selectedLocation) updateTrackingFitLoop();
+          updateRecenterButtonState();
         }
       });
     }

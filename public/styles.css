@@ -565,6 +565,45 @@ body {
   background: #1a2332;
 }
 
+.map-recenter-btn {
+  position: absolute;
+  z-index: 2050;
+  right: max(0.65rem, env(safe-area-inset-right));
+  bottom: max(9.5rem, 22vh);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(26, 35, 50, 0.96);
+  color: var(--muted);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+
+.map-recenter-btn:active {
+  transform: scale(0.96);
+}
+
+.map-recenter-btn.map-recenter-btn--free {
+  color: var(--accent);
+  box-shadow: 0 2px 14px rgba(88, 166, 255, 0.22);
+}
+
+.map-recenter-btn.map-recenter-btn--following {
+  color: var(--muted);
+}
+
+.map-recenter-icon {
+  width: 22px;
+  height: 22px;
+}
+
 /* Bocadillos de Google Maps: fondo claro, texto oscuro (no heredar el tema oscuro del body) */
 .map-popup {
   color: #1a2332;
