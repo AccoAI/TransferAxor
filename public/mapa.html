@@ -223,6 +223,9 @@
 
     socket.on("connect", function() {
       resyncPassengerSession();
+      requestAnimationFrame(function() {
+        forceRefreshPassengerEta();
+      });
     });
 
     window.addEventListener("pageshow", function(ev) {
@@ -233,6 +236,7 @@
           google.maps.event.trigger(map, "resize");
           scheduleFitRouteViewport();
         }
+        forceRefreshPassengerEta();
       });
     });
 
@@ -240,6 +244,9 @@
       if (document.visibilityState !== "visible") return;
       if (!socket.connected) socket.connect();
       else resyncPassengerSession();
+      requestAnimationFrame(function() {
+        forceRefreshPassengerEta();
+      });
     });
     const partyCountEl = document.getElementById("partyCount");
     const partyMinusEl = document.getElementById("partyMinus");
@@ -1017,11 +1024,33 @@
         lastActiveVehicleEta.lat,
         lastActiveVehicleEta.lng,
         lastActiveVehicleEta.label,
-        directionsService
+        directionsService,
+        false
       );
     }
 
-    function updateEtaFromGoogle(vehicleId, lat, lng, label, directionsService) {
+    /** Tras volver a la pestaña o reconectar: el throttle de ETA dejaba “Calculando…” sin nueva petición a Google. */
+    function forceRefreshPassengerEta() {
+      if (!directionsServiceInstance || !lastActiveVehicleEta) {
+        updateLegendCompact();
+        return;
+      }
+      if (activeVehicleIdOnMap) delete lastEtaOrigin[activeVehicleIdOnMap];
+      delete lastEtaOrigin[lastActiveVehicleEta.id];
+      updateEtaFromGoogle(
+        lastActiveVehicleEta.id,
+        lastActiveVehicleEta.lat,
+        lastActiveVehicleEta.lng,
+        lastActiveVehicleEta.label,
+        directionsServiceInstance,
+        true
+      );
+      refreshPickupRoute();
+      updateLegendCompact();
+    }
+
+    function updateEtaFromGoogle(vehicleId, lat, lng, label, directionsService, force) {
+      const forceRefresh = force === true;
       const currentLeg = getCurrentLegIndex(lat, lng);
       if (currentLeg < 0) {
         if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
@@ -1037,7 +1066,15 @@
         return;
       }
       const last = lastEtaOrigin[vehicleId];
-      if (last && distanceKm(lat, lng, last.lat, last.lng) < ETA_THROTTLE_KM) return;
+      if (!forceRefresh && last && distanceKm(lat, lng, last.lat, last.lng) < ETA_THROTTLE_KM) {
+        if (vehicleId === activeVehicleIdOnMap && signedUp && selectedLocation) {
+          const meta = vehicleMeta[vehicleId] || {};
+          const dest = getDestinationStopName();
+          if (dest && getStopEtaSecondsRemaining(meta, dest) !== null) return;
+        } else {
+          return;
+        }
+      }
       lastEtaOrigin[vehicleId] = { lat: lat, lng: lng };
       setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
 
@@ -1153,6 +1190,7 @@
         google.maps.event.trigger(map, "resize");
         scheduleFitRouteViewport();
         resyncPassengerSession();
+        forceRefreshPassengerEta();
         return;
       }
 
