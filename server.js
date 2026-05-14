@@ -33,11 +33,11 @@ const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t3", "t4"];
 const HOTEL_DESTINATIONS = new Set(["t1", "t2", "t3", "t4", "ifema", "simuladores"]);
 
 const vehicles = {
-  vito1: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito 1", capacity: 8, passengers: 0, lastUpdate: null },
-  vito2: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito 2", capacity: 8, passengers: 0, lastUpdate: null },
-  vito3: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito 3", capacity: 8, passengers: 0, lastUpdate: null },
-  vito4: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito 4", capacity: 8, passengers: 0, lastUpdate: null },
-  minibus: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Minibús", capacity: 15, passengers: 0, lastUpdate: null },
+  vito1: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito NJC", capacity: 8, passengers: 0, lastUpdate: null },
+  vito2: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito LZD", capacity: 8, passengers: 0, lastUpdate: null },
+  vito3: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito MMR", capacity: 8, passengers: 0, lastUpdate: null },
+  vito4: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito MDX", capacity: 8, passengers: 0, lastUpdate: null },
+  minibus: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Minibus MSX", capacity: 15, passengers: 0, lastUpdate: null },
 };
 
 const signups = new Map();
