@@ -473,9 +473,10 @@
       });
 
       const directionsService = new google.maps.DirectionsService();
+      const hotelLatLng = { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
       const request = {
-        origin: CAMPEZO_STR,
-        destination: CAMPEZO_STR,
+        origin: hotelLatLng,
+        destination: hotelLatLng,
         waypoints: TERMINALES.map(function(t) { return { location: { lat: t.lat, lng: t.lng }, stopover: true }; }),
         optimizeWaypoints: false,
         travelMode: google.maps.TravelMode.DRIVING,

@@ -44,6 +44,20 @@
       </button>
       <span class="client-signup-locate-status" id="locateStatus"></span>
     </div>
+    <!-- Destino: justo debajo de ubicación; visible al tener parada de espera elegida -->
+    <div class="client-signup-dest" id="hotelDestRow" hidden>
+      <div class="client-signup-dest-inner">
+        <span class="client-signup-label client-signup-dest-label">Destino</span>
+        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino: Hotel Campezo 4, T1, T2, T4, IFEMA o Simuladores">
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="hotel">Hotel Campezo 4</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t1">T1</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t2">T2</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t4">T4</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="ifema">IFEMA</button>
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="simuladores">Simuladores</button>
+        </div>
+      </div>
+    </div>
     <!-- Selector manual: visible solo cuando GPS no reconoce ninguna parada -->
     <div id="manualStopsRow" hidden>
       <span class="client-signup-label">¿Dónde esperas?</span>
@@ -52,19 +66,6 @@
         <button type="button" class="client-signup-stop" data-location="t1">T1</button>
         <button type="button" class="client-signup-stop" data-location="t2">T2</button>
         <button type="button" class="client-signup-stop" data-location="t4">T4</button>
-      </div>
-    </div>
-    <div class="client-signup-dest" id="hotelDestRow" hidden>
-      <div class="client-signup-dest-inner">
-        <span class="client-signup-label client-signup-dest-label">Destino</span>
-        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino: T1, T2, T4, IFEMA, Simuladores o Campezo 4 (hotel)">
-          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t1">T1</button>
-          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t2">T2</button>
-          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t4">T4</button>
-          <button type="button" class="client-signup-stop client-signup-dest" data-dest="ifema">IFEMA</button>
-          <button type="button" class="client-signup-stop client-signup-dest" data-dest="simuladores">Simuladores</button>
-          <button type="button" class="client-signup-stop client-signup-dest" data-dest="hotel">Campezo 4</button>
-        </div>
       </div>
     </div>
     <div class="client-signup-party">
@@ -827,6 +828,8 @@
     let routeLegDurationsSec = null;
     /** Resultado Directions del circuito cerrado (para reaplicar si hace falta). */
     let circuitDirectionsResult = null;
+    /** Si la petición del circuito cerrado a Directions falla (clave API, cuota, etc.). */
+    let circuitDirectionsRequestFailed = false;
     /** Duración T4→hotel (petición directa). El último tramo del circuito cerrado a veces no coincide con la llegada real al Axor. */
     let routeT4ToHotelDriveSec = null;
     const PARADA_TERMINAL_MIN = 0;
@@ -932,6 +935,11 @@
 
     function updateLegendCompact() {
       if (!legendCompactEl) return;
+      if (circuitDirectionsRequestFailed && (!routeLegDurationsSec || routeLegDurationsSec.length !== 4)) {
+        legendCompactEl.textContent =
+          "No se pudo calcular la ruta del mapa. Revisa la clave de Google Maps o recarga la página.";
+        return;
+      }
       paintActiveVehicleRowOrchestratedHotelEtas();
       const vehicleId = activeVehicleIdOnMap;
 
@@ -1907,9 +1915,10 @@
       // Ruta circular: Campezo 4 → T1 → T2 → T4 → Campezo 4 (por carretera)
       const directionsService = new google.maps.DirectionsService();
       directionsServiceInstance = directionsService;
+      const hotelLatLng = { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
       const request = {
-        origin: CAMPEZO_STR,
-        destination: CAMPEZO_STR,
+        origin: hotelLatLng,
+        destination: hotelLatLng,
         waypoints: TERMINALES.map(function(t) { return { location: { lat: t.lat, lng: t.lng }, stopover: true }; }),
         optimizeWaypoints: false,
         travelMode: google.maps.TravelMode.DRIVING,
@@ -1918,6 +1927,7 @@
 
       directionsService.route(request, function(result, status) {
         if (status === google.maps.DirectionsStatus.OK) {
+          circuitDirectionsRequestFailed = false;
           circuitDirectionsResult = result;
           directionsRenderer.setMap(map);
           directionsRenderer.setDirections(result);
@@ -1934,6 +1944,11 @@
             refreshPickupRoute();
             updateLegendCompact();
           });
+        } else {
+          circuitDirectionsRequestFailed = true;
+          circuitDirectionsResult = null;
+          routeLegDurationsSec = null;
+          updateLegendCompact();
         }
       });
 
