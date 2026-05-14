@@ -203,6 +203,13 @@ body {
   background: rgba(56, 139, 253, 0.15);
 }
 
+.conductor-vehicle-mode-hint {
+  margin: 0.55rem 0 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--accent);
+}
+
 .status {
   display: flex;
   align-items: center;

@@ -32,12 +32,58 @@ const CAMPEZO_DEFAULT = { lat: 40.447914, lng: -3.583004 };
 const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t3", "t4"];
 const HOTEL_DESTINATIONS = new Set(["t1", "t2", "t3", "t4", "ifema", "simuladores"]);
 
+/** circuit: ruta circular programada. adhoc: IFEMA, simuladores, apoyo, etc. (editable por vehículo) */
 const vehicles = {
-  vito1: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito NJC", capacity: 8, passengers: 0, lastUpdate: null },
-  vito2: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito LZD", capacity: 8, passengers: 0, lastUpdate: null },
-  vito3: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito MMR", capacity: 8, passengers: 0, lastUpdate: null },
-  vito4: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Vito MDX", capacity: 8, passengers: 0, lastUpdate: null },
-  minibus: { lat: CAMPEZO_DEFAULT.lat, lng: CAMPEZO_DEFAULT.lng, label: "Minibus MSX", capacity: 15, passengers: 0, lastUpdate: null },
+  vito1: {
+    lat: CAMPEZO_DEFAULT.lat,
+    lng: CAMPEZO_DEFAULT.lng,
+    label: "Vito NJC",
+    capacity: 8,
+    passengers: 0,
+    lastUpdate: null,
+    serviceMode: "circuit",
+    circuitSchedule: "A",
+  },
+  vito2: {
+    lat: CAMPEZO_DEFAULT.lat,
+    lng: CAMPEZO_DEFAULT.lng,
+    label: "Vito LZD",
+    capacity: 8,
+    passengers: 0,
+    lastUpdate: null,
+    serviceMode: "circuit",
+    circuitSchedule: "B",
+  },
+  vito3: {
+    lat: CAMPEZO_DEFAULT.lat,
+    lng: CAMPEZO_DEFAULT.lng,
+    label: "Vito MMR",
+    capacity: 8,
+    passengers: 0,
+    lastUpdate: null,
+    serviceMode: "adhoc",
+    circuitSchedule: null,
+  },
+  vito4: {
+    lat: CAMPEZO_DEFAULT.lat,
+    lng: CAMPEZO_DEFAULT.lng,
+    label: "Vito MDX",
+    capacity: 8,
+    passengers: 0,
+    lastUpdate: null,
+    serviceMode: "adhoc",
+    circuitSchedule: null,
+  },
+  minibus: {
+    lat: CAMPEZO_DEFAULT.lat,
+    lng: CAMPEZO_DEFAULT.lng,
+    label: "Minibus MSX",
+    capacity: 15,
+    passengers: 0,
+    lastUpdate: null,
+    serviceMode: "adhoc",
+    circuitSchedule: null,
+  },
 };
 
 const signups = new Map();
@@ -115,6 +161,8 @@ function getVehiclesForClients() {
       capacity: vehicles[id].capacity,
       passengers: vehicles[id].passengers,
       lastUpdate: id === activeVehicleId ? vehicles[id].lastUpdate : null,
+      serviceMode: vehicles[id].serviceMode || "circuit",
+      circuitSchedule: vehicles[id].circuitSchedule != null ? vehicles[id].circuitSchedule : null,
     };
   }
   return out;

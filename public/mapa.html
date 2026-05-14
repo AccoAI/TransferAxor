@@ -801,9 +801,48 @@
     const lastEtaOrigin = {};
     const ETA_THROTTLE_KM = 0.3;
 
-    // Salidas cada 30 min (en punto y en y media).
-    // Si atHotel: en los primeros minutos tras :00 o :30 → "salida inminente" a esa hora; si no, próxima salida.
-    // Si !atHotel: siempre la próxima salida (ej. a las 10:00 fuera del hotel → 10:30).
+    /** Metadatos por vehículo (viene del servidor; ver server.js). */
+    var vehicleServiceById = {};
+
+    function getVehicleService(vehicleId) {
+      var s = vehicleServiceById[vehicleId];
+      if (s && s.serviceMode) return s;
+      return { serviceMode: "circuit", circuitSchedule: "A" };
+    }
+
+    /**
+     * Circuito A: hotel en punto, T4 en y media (solo usamos cadencia en hotel en esta app).
+     * Circuito B: hotel en y media, T4 en punto.
+     */
+    function getHotelDepartureDisplayCircuit(schedule) {
+      const clock = madridClockParts(new Date());
+      const hour = clock.hour;
+      const min = clock.minute;
+      if (schedule === "B") {
+        if (min >= 30 && min < 35) return { imminent: true, time: pad2(hour) + ":30" };
+        if (min < 30) return { imminent: false, time: pad2(hour) + ":30" };
+        return { imminent: false, time: pad2((hour + 1) % 24) + ":30" };
+      }
+      if (min < 5) return { imminent: true, time: pad2(hour) + ":00" };
+      return { imminent: false, time: pad2((hour + 1) % 24) + ":00" };
+    }
+
+    function getSecondsUntilHotelDepartureCircuit(schedule) {
+      const dep = getHotelDepartureDisplayCircuit(schedule);
+      if (dep.imminent) return 0;
+      const target = dep.time.split(":").map(Number);
+      const now = Date.now();
+      for (let delta = 0; delta <= 25 * 3600 * 1000; delta += 1000) {
+        const instant = new Date(now + delta);
+        const clock = madridClockParts(instant);
+        if (clock.hour === target[0] && clock.minute === target[1]) {
+          return Math.max(0, Math.round(delta / 1000));
+        }
+      }
+      return 0;
+    }
+
+    // Cadencia en hotel (circuito): ver getHotelDepartureDisplayCircuit y server.js (serviceMode / circuitSchedule).
     function pad2(n) {
       return (n < 10 ? "0" : "") + n;
     }
@@ -827,33 +866,6 @@
         hour: "2-digit",
         minute: "2-digit"
       });
-    }
-
-    function getDepartureDisplay(atHotel) {
-      const clock = madridClockParts(new Date());
-      const hour = clock.hour;
-      const min = clock.minute;
-      if (atHotel) {
-        if (min < 5) return { imminent: true, time: pad2(hour) + ":00" };
-        if (min >= 30 && min < 35) return { imminent: true, time: pad2(hour) + ":30" };
-      }
-      if (min < 30) return { imminent: false, time: pad2(hour) + ":30" };
-      return { imminent: false, time: pad2((hour + 1) % 24) + ":00" };
-    }
-
-    function getSecondsUntilDeparture() {
-      const dep = getDepartureDisplay(true);
-      if (dep.imminent) return 0;
-      const target = dep.time.split(":").map(Number);
-      const now = Date.now();
-      for (let delta = 0; delta <= 24 * 3600 * 1000; delta += 1000) {
-        const instant = new Date(now + delta);
-        const clock = madridClockParts(instant);
-        if (clock.hour === target[0] && clock.minute === target[1]) {
-          return Math.max(0, Math.round(delta / 1000));
-        }
-      }
-      return 0;
     }
 
     function locationKeyToStopIndex(locationKey) {
@@ -1186,7 +1198,7 @@
       return etas;
     }
 
-    function formatEtasDisplay(stopEtas, depInfo) {
+    function formatEtasDisplay(stopEtas, depInfo, detailPrefix) {
       if (!stopEtas || !stopEtas.length) return { summary: "—", detail: "" };
       const next = stopEtas[0];
       const summary = "Siguiente: " + next.name + " · llegada " + next.text;
@@ -1194,10 +1206,11 @@
       if (depInfo) {
         lines.unshift((depInfo.imminent ? "Salida inminente " : "Salida ") + depInfo.time);
       }
+      if (detailPrefix) lines.unshift(detailPrefix);
       return { summary: summary, detail: lines.join("\n") };
     }
 
-    function applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, departureWaitSec, depInfo) {
+    function applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, departureWaitSec, depInfo, detailPrefix) {
       const stopEtas = computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec);
       const meta = vehicleMeta[vehicleId] || {};
       meta.stopEtas = stopEtas;
@@ -1208,7 +1221,7 @@
         departureWaitSec: departureWaitSec || 0
       };
       vehicleMeta[vehicleId] = meta;
-      const display = formatEtasDisplay(stopEtas, depInfo);
+      const display = formatEtasDisplay(stopEtas, depInfo, detailPrefix);
       setEtaForVehicle(vehicleId, label, {
         summary: display.summary,
         detail: display.detail,
@@ -1256,8 +1269,22 @@
           setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
           return;
         }
-        const dep = getDepartureDisplay(true);
-        applyRouteEtas(vehicleId, label, -1, 0, getSecondsUntilDeparture(), dep);
+        const svc = getVehicleService(vehicleId);
+        if (svc.serviceMode === "adhoc") {
+          applyRouteEtas(
+            vehicleId,
+            label,
+            -1,
+            0,
+            0,
+            null,
+            "Servicio extraordinario (IFEMA, simuladores, apoyo…). En hotel sin cadencia fija de circuito; tiempos por Maps."
+          );
+          return;
+        }
+        const sched = svc.circuitSchedule === "B" ? "B" : "A";
+        const dep = getHotelDepartureDisplayCircuit(sched);
+        applyRouteEtas(vehicleId, label, -1, 0, getSecondsUntilHotelDepartureCircuit(sched), dep);
         return;
       }
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
@@ -1504,6 +1531,14 @@
           if (!map) return;
         lastVehiclesLive = {};
         vehicleIds.forEach(function(id) { lastVehiclesLive[id] = false; });
+        vehicleIds.forEach(function(id) {
+          var row = vehicles[id];
+          if (!row) return;
+          vehicleServiceById[id] = {
+            serviceMode: row.serviceMode === "adhoc" ? "adhoc" : "circuit",
+            circuitSchedule: row.serviceMode === "adhoc" ? null : (row.circuitSchedule === "B" ? "B" : "A")
+          };
+        });
 
         var activeOne = null;
         for (const [id, v] of Object.entries(vehicles)) {

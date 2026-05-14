@@ -26,12 +26,13 @@
     <div class="vehicle-select">
       <label>¿En qué vehículo vas?</label>
       <div class="vehicle-buttons">
-        <button type="button" data-vehicle="vito1" data-capacity="8">Vito NJC (8 plazas)</button>
-        <button type="button" data-vehicle="vito2" data-capacity="8">Vito LZD (8 plazas)</button>
-        <button type="button" data-vehicle="vito3" data-capacity="8">Vito MMR (8 plazas)</button>
-        <button type="button" data-vehicle="vito4" data-capacity="8">Vito MDX (8 plazas)</button>
-        <button type="button" data-vehicle="minibus" data-capacity="15">Minibus MSX (15 plazas)</button>
+        <button type="button" data-vehicle="vito1" data-capacity="8" data-service-mode="circuit" data-circuit-schedule="A">Vito NJC (8 plazas)</button>
+        <button type="button" data-vehicle="vito2" data-capacity="8" data-service-mode="circuit" data-circuit-schedule="B">Vito LZD (8 plazas)</button>
+        <button type="button" data-vehicle="vito3" data-capacity="8" data-service-mode="adhoc">Vito MMR (8 plazas)</button>
+        <button type="button" data-vehicle="vito4" data-capacity="8" data-service-mode="adhoc">Vito MDX (8 plazas)</button>
+        <button type="button" data-vehicle="minibus" data-capacity="15" data-service-mode="adhoc">Minibus MSX (15 plazas)</button>
       </div>
+      <p class="conductor-vehicle-mode-hint" id="vehicleModeHint" hidden></p>
     </div>
 
     <div class="passenger-panel" id="passengerPanel" hidden>
@@ -99,6 +100,32 @@
     const passengerCapacity = document.getElementById("passengerCapacity");
     const passengerMinus = document.getElementById("passengerMinus");
     const passengerPlus = document.getElementById("passengerPlus");
+    const vehicleModeHintEl = document.getElementById("vehicleModeHint");
+
+    function setVehicleModeHint(btn) {
+      if (!vehicleModeHintEl) return;
+      if (!btn || !btn.dataset.vehicle) {
+        vehicleModeHintEl.hidden = true;
+        vehicleModeHintEl.textContent = "";
+        return;
+      }
+      const mode = btn.dataset.serviceMode;
+      if (mode === "adhoc") {
+        vehicleModeHintEl.textContent =
+          "Servicio extraordinario (IFEMA, simuladores, apoyo aeropuerto…). La app no aplica cadencia fija de circuito en el hotel.";
+        vehicleModeHintEl.hidden = false;
+        return;
+      }
+      const sched = btn.dataset.circuitSchedule;
+      if (sched === "B") {
+        vehicleModeHintEl.textContent =
+          "Circuito programado: en el hotel cadencia en y media (cada :30). El otro vehículo de circuito sale en punto (:00). Tiempos de ruta por Maps.";
+      } else {
+        vehicleModeHintEl.textContent =
+          "Circuito programado: en el hotel cadencia en punto (cada :00). El otro vehículo de circuito sale en y media (:30). Tiempos de ruta por Maps.";
+      }
+      vehicleModeHintEl.hidden = false;
+    }
 
     function setStatus(ok, text) {
       statusDot.className = "status-dot " + (ok ? "ok" : "error");
@@ -254,6 +281,7 @@
         selectedVehicle = btn.dataset.vehicle;
         vehicleCapacity = Number(btn.dataset.capacity) || 8;
         mainEl.setAttribute("data-current-vehicle", selectedVehicle || "");
+        setVehicleModeHint(btn);
         passengerPanel.hidden = false;
         updateCapacityLabel();
         setPassengerCount(0, false);
