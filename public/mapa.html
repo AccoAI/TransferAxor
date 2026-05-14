@@ -153,9 +153,9 @@
     const CAMPEZO_STR = "Calle Campezo 10, 28022 Madrid";
     // Terminales Barajas (paradas con enlace Google Maps) — ruta: Hotel → T1 → T2 → T4 → Hotel
     const TERMINALES = [
-      { lat: 40.46412, lng: -3.57045, name: "Terminal T1 Salidas", link: "https://maps.app.goo.gl/jewMDcD6YS92QkUMA" },
-      { lat: 40.46817, lng: -3.56969, name: "Terminal T2 Barajas", link: "https://maps.app.goo.gl/EtAnKzxfKwGc2fyeA" },
-      { lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
+      { key: "t1", lat: 40.46412, lng: -3.57045, name: "Terminal T1 Salidas", link: "https://maps.app.goo.gl/jewMDcD6YS92QkUMA" },
+      { key: "t2", lat: 40.46817, lng: -3.56969, name: "Terminal T2 Barajas", link: "https://maps.app.goo.gl/EtAnKzxfKwGc2fyeA" },
+      { key: "t4", lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
     ];
     const IFEMA = { lat: 40.4643, lng: -3.6167 };
     /** Zona simuladores / formación vuelo en recinto Barajas (ajustar coordenadas si usáis otro punto exacto). */
@@ -859,13 +859,13 @@
 
     /**
      * ETA en segundos desde ahora para un pasajero en el hotel hacia destKey,
-     * usando la cadencia del servicio ordinario (schedule "A" o "B").
+     * desde la próxima ranura combinada :00 / :30 (hora Madrid).
      */
-    function computeHotelPassengerEtaSec(destKey, schedule) {
+    function computeHotelPassengerEtaSec(destKey) {
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
       const destIndex = locationKeyToStopIndex(destKey);
       if (destIndex === null || destIndex === 3) return null;
-      const depSec = getSecondsUntilHotelDepartureCircuit(schedule);
+      const depSec = getNextHotelOrchestratedDepartureInfo().secondsUntil;
       let travelSec = 0;
       for (let i = 0; i <= destIndex; i++) travelSec += routeLegDurationsSec[i];
       return depSec + travelSec;
@@ -873,6 +873,7 @@
 
     function updateLegendCompact() {
       if (!legendCompactEl) return;
+      paintActiveVehicleRowOrchestratedHotelEtas();
       const vehicleId = activeVehicleIdOnMap;
 
       // Pasajero en el hotel: ETA desde próxima salida del circuito, no desde posición del vehículo
@@ -881,17 +882,8 @@
           legendCompactEl.textContent = "Calculando ruta…";
           return;
         }
-        const svc = vehicleId ? getVehicleService(vehicleId) : null;
-        const schedule = (svc && svc.serviceMode === "circuit")
-          ? (svc.circuitSchedule === "B" ? "B" : "A")
-          : (function() {
-              // Sin vehículo de circuito activo: usar la salida más próxima entre A y B
-              const secA = getSecondsUntilHotelDepartureCircuit("A");
-              const secB = getSecondsUntilHotelDepartureCircuit("B");
-              return secA <= secB ? "A" : "B";
-            })();
-        const dep = getHotelDepartureDisplayCircuit(schedule);
-        const etaSec = computeHotelPassengerEtaSec(tripDestination, schedule);
+        const dep = getNextHotelOrchestratedDepartureInfo();
+        const etaSec = computeHotelPassengerEtaSec(tripDestination);
         if (etaSec === null) {
           legendCompactEl.textContent = "Calculando…";
           return;
@@ -947,38 +939,59 @@
     }
 
     /**
-     * Circuito A: hotel en punto, T4 en y media (solo usamos cadencia en hotel en esta app).
-     * Circuito B: hotel en y media, T4 en punto.
+     * Servicio ordinario desde hotel en dos circuitos intercalados: salidas en :00 y :30 (hora Madrid).
+     * Sin margen tras la hora: a las 13:04 la siguiente ranura es 13:30 (no se asume salida a las 13:00 ya pasada).
      */
+    function madridSecondsSinceMidnight(date) {
+      const parts = new Intl.DateTimeFormat("es-ES", {
+        timeZone: MADRID_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      }).formatToParts(date || new Date());
+      const pick = function(type) {
+        return parseInt(parts.find(function(p) { return p.type === type; }).value, 10);
+      };
+      return pick("hour") * 3600 + pick("minute") * 60 + pick("second");
+    }
+
+    function getNextHotelOrchestratedDepartureInfo() {
+      const now = Date.now();
+      const s = madridSecondsSinceMidnight(new Date(now));
+      const boundarySec = Math.ceil(s / 1800) * 1800;
+      const deltaSec = Math.max(0, boundarySec - s);
+      const imminent = deltaSec === 0;
+      const nextInstant = new Date(now + deltaSec * 1000);
+      const p = new Intl.DateTimeFormat("es-ES", {
+        timeZone: MADRID_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).formatToParts(nextInstant);
+      const pick = function(type) {
+        return parseInt(p.find(function(x) { return x.type === type; }).value, 10);
+      };
+      const h = pick("hour");
+      const m = pick("minute");
+      return {
+        imminent: imminent,
+        time: pad2(h) + ":" + pad2(m),
+        secondsUntil: deltaSec
+      };
+    }
+
+    /** El parámetro schedule se ignora: la ranura combina ambos circuitos (:00 y :30). */
     function getHotelDepartureDisplayCircuit(schedule) {
-      const clock = madridClockParts(new Date());
-      const hour = clock.hour;
-      const min = clock.minute;
-      if (schedule === "B") {
-        if (min >= 30 && min < 35) return { imminent: true, time: pad2(hour) + ":30" };
-        if (min < 30) return { imminent: false, time: pad2(hour) + ":30" };
-        return { imminent: false, time: pad2((hour + 1) % 24) + ":30" };
-      }
-      if (min < 5) return { imminent: true, time: pad2(hour) + ":00" };
-      return { imminent: false, time: pad2((hour + 1) % 24) + ":00" };
+      const o = getNextHotelOrchestratedDepartureInfo();
+      return { imminent: o.imminent, time: o.time };
     }
 
     function getSecondsUntilHotelDepartureCircuit(schedule) {
-      const dep = getHotelDepartureDisplayCircuit(schedule);
-      if (dep.imminent) return 0;
-      const target = dep.time.split(":").map(Number);
-      const now = Date.now();
-      for (let delta = 0; delta <= 25 * 3600 * 1000; delta += 1000) {
-        const instant = new Date(now + delta);
-        const clock = madridClockParts(instant);
-        if (clock.hour === target[0] && clock.minute === target[1]) {
-          return Math.max(0, Math.round(delta / 1000));
-        }
-      }
-      return 0;
+      return getNextHotelOrchestratedDepartureInfo().secondsUntil;
     }
 
-    // Cadencia en hotel (circuito): ver getHotelDepartureDisplayCircuit y server.js (serviceMode / circuitSchedule).
+    // Cadencia en hotel: getNextHotelOrchestratedDepartureInfo; serviceMode / circuitSchedule en server.js (conductor).
     function pad2(n) {
       return (n < 10 ? "0" : "") + n;
     }
@@ -1345,6 +1358,34 @@
       return { summary: summary, detail: lines.join("\n") };
     }
 
+    /**
+     * Pasajero en hotel: la fila del vehículo activo (resumen + desplegable) debe usar la próxima salida
+     * :00/:30, no la posición del transfer en circuito.
+     */
+    function paintActiveVehicleRowOrchestratedHotelEtas() {
+      if (!activeVehicleIdOnMap) return;
+      if (!signedUp || selectedLocation !== "hotel" || !tripDestination) return;
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return;
+      const depInfo = getNextHotelOrchestratedDepartureInfo();
+      const orch = computeStopEtas(-1, 0, depInfo.secondsUntil);
+      if (!orch || !orch.length) return;
+      const vid = activeVehicleIdOnMap;
+      const meta = vehicleMeta[vid] || {};
+      meta.stopEtas = orch;
+      meta.stopEtasAt = Date.now();
+      meta.routeEtaContext = {
+        currentLeg: -1,
+        remainingOnLegSec: 0,
+        departureWaitSec: depInfo.secondsUntil
+      };
+      vehicleMeta[vid] = meta;
+      const disp = formatEtasDisplay(orch, { imminent: depInfo.imminent, time: depInfo.time }, null);
+      const el = document.getElementById(etaEl[vid]);
+      if (el) el.textContent = disp.summary;
+      const statusNode = document.getElementById(statusEl[vid]);
+      if (statusNode) statusNode.textContent = disp.detail;
+    }
+
     function applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, departureWaitSec, depInfo, detailPrefix) {
       const stopEtas = computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec);
       const meta = vehicleMeta[vehicleId] || {};
@@ -1485,10 +1526,23 @@
         meta.stopEtasAt = Date.now();
       }
       vehicleMeta[vehicleId] = meta;
-      const el = document.getElementById(etaEl[vehicleId]);
-      if (el) el.textContent = eta.summary || "—";
-      const statusNode = document.getElementById(statusEl[vehicleId]);
-      if (statusNode) statusNode.textContent = eta.detail || "";
+
+      const useOrchestratedHotelRow =
+        vehicleId === activeVehicleIdOnMap &&
+        signedUp &&
+        selectedLocation === "hotel" &&
+        tripDestination &&
+        routeLegDurationsSec &&
+        routeLegDurationsSec.length === 4;
+
+      if (useOrchestratedHotelRow) {
+        paintActiveVehicleRowOrchestratedHotelEtas();
+      } else {
+        const el = document.getElementById(etaEl[vehicleId]);
+        if (el) el.textContent = (eta && eta.summary) ? eta.summary : "—";
+        const statusNode = document.getElementById(statusEl[vehicleId]);
+        if (statusNode) statusNode.textContent = (eta && eta.detail) ? eta.detail : "";
+      }
       if (vehicleId === activeVehicleIdOnMap) updateLegendCompact();
     }
 
@@ -1643,17 +1697,18 @@
       };
       stopPoints.push(hotelStop);
 
-      TERMINALES.forEach(function(t, i) {
-        const num = i + 1;
+      TERMINALES.forEach(function(t) {
+        const locKey = t.key;
+        const iconLetter = locKey.charAt(0).toUpperCase() + locKey.slice(1);
         const m = new google.maps.Marker({
           map: map,
           position: { lat: t.lat, lng: t.lng },
           title: t.name,
-          icon: makeStopIcon("T" + num, "#388bfd")
+          icon: makeStopIcon(iconLetter, "#388bfd")
         });
         const stop = {
           marker: m,
-          location: "t" + num,
+          location: locKey,
           title: t.name,
           link: t.link
         };

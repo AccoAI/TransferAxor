@@ -42,9 +42,9 @@
     const CAMPEZO = { lat: 40.447914, lng: -3.583004 };
     const CAMPEZO_STR = "Calle Campezo 10, 28022 Madrid";
     const TERMINALES = [
-      { lat: 40.46412, lng: -3.57045, name: "Terminal T1 Salidas", link: "https://maps.app.goo.gl/jewMDcD6YS92QkUMA" },
-      { lat: 40.46817, lng: -3.56969, name: "Terminal T2 Barajas", link: "https://maps.app.goo.gl/EtAnKzxfKwGc2fyeA" },
-      { lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
+      { key: "t1", lat: 40.46412, lng: -3.57045, name: "Terminal T1 Salidas", link: "https://maps.app.goo.gl/jewMDcD6YS92QkUMA" },
+      { key: "t2", lat: 40.46817, lng: -3.56969, name: "Terminal T2 Barajas", link: "https://maps.app.goo.gl/EtAnKzxfKwGc2fyeA" },
+      { key: "t4", lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
     ];
 
     const vehicleIds = ["vito1", "vito2", "vito3", "vito4", "minibus"];
@@ -88,32 +88,57 @@
       return { serviceMode: "circuit", circuitSchedule: "A" };
     }
 
+    /**
+     * Servicio ordinario desde hotel en dos circuitos intercalados: salidas en :00 y :30 (hora Madrid).
+     * Sin margen tras la hora: a las 13:04 la siguiente ranura es 13:30.
+     */
+    function madridSecondsSinceMidnight(date) {
+      const parts = new Intl.DateTimeFormat("es-ES", {
+        timeZone: MADRID_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      }).formatToParts(date || new Date());
+      const pick = function(type) {
+        return parseInt(parts.find(function(p) { return p.type === type; }).value, 10);
+      };
+      return pick("hour") * 3600 + pick("minute") * 60 + pick("second");
+    }
+
+    function getNextHotelOrchestratedDepartureInfo() {
+      const now = Date.now();
+      const s = madridSecondsSinceMidnight(new Date(now));
+      const boundarySec = Math.ceil(s / 1800) * 1800;
+      const deltaSec = Math.max(0, boundarySec - s);
+      const imminent = deltaSec === 0;
+      const nextInstant = new Date(now + deltaSec * 1000);
+      const p = new Intl.DateTimeFormat("es-ES", {
+        timeZone: MADRID_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).formatToParts(nextInstant);
+      const pick = function(type) {
+        return parseInt(p.find(function(x) { return x.type === type; }).value, 10);
+      };
+      const h = pick("hour");
+      const m = pick("minute");
+      return {
+        imminent: imminent,
+        time: pad2(h) + ":" + pad2(m),
+        secondsUntil: deltaSec
+      };
+    }
+
+    /** schedule ignorado: ranura combinada :00 y :30. */
     function getHotelDepartureDisplayCircuit(schedule) {
-      const clock = madridClockParts(new Date());
-      const hour = clock.hour;
-      const min = clock.minute;
-      if (schedule === "B") {
-        if (min >= 30 && min < 35) return { imminent: true, time: pad2(hour) + ":30" };
-        if (min < 30) return { imminent: false, time: pad2(hour) + ":30" };
-        return { imminent: false, time: pad2((hour + 1) % 24) + ":30" };
-      }
-      if (min < 5) return { imminent: true, time: pad2(hour) + ":00" };
-      return { imminent: false, time: pad2((hour + 1) % 24) + ":00" };
+      const o = getNextHotelOrchestratedDepartureInfo();
+      return { imminent: o.imminent, time: o.time };
     }
 
     function getSecondsUntilHotelDepartureCircuit(schedule) {
-      const dep = getHotelDepartureDisplayCircuit(schedule);
-      if (dep.imminent) return 0;
-      const target = dep.time.split(":").map(Number);
-      const now = Date.now();
-      for (let delta = 0; delta <= 25 * 3600 * 1000; delta += 1000) {
-        const instant = new Date(now + delta);
-        const clock = madridClockParts(instant);
-        if (clock.hour === target[0] && clock.minute === target[1]) {
-          return Math.max(0, Math.round(delta / 1000));
-        }
-      }
-      return 0;
+      return getNextHotelOrchestratedDepartureInfo().secondsUntil;
     }
 
     function pad2(n) {
@@ -444,17 +469,18 @@
         link: null
       });
 
-      TERMINALES.forEach(function(t, i) {
-        const num = i + 1;
+      TERMINALES.forEach(function(t) {
+        const locKey = t.key;
+        const iconLetter = locKey.charAt(0).toUpperCase() + locKey.slice(1);
         const m = new google.maps.Marker({
           map: map,
           position: { lat: t.lat, lng: t.lng },
           title: t.name,
-          icon: makeStopIcon("T" + num, "#388bfd")
+          icon: makeStopIcon(iconLetter, "#388bfd")
         });
         stopPoints.push({
           marker: m,
-          location: "t" + num,
+          location: locKey,
           title: t.name,
           link: t.link
         });
