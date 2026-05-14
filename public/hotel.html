@@ -132,6 +132,27 @@
       return pick("hour") * 3600 + pick("minute") * 60 + pick("second");
     }
 
+    function snapUpToNextHalfHourMadrid(epochMs) {
+      const s = madridSecondsSinceMidnight(new Date(epochMs));
+      const boundarySec = Math.ceil(s / 1800) * 1800;
+      return epochMs + (boundarySec - s) * 1000;
+    }
+
+    function getHotelArrivalSecOrchestratedFromHotel(departureWaitSec) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
+      const depWait = departureWaitSec || 0;
+      const parSec = PARADA_TERMINAL_MIN * 60;
+      let t4ArriveSec = depWait;
+      for (let i = 0; i <= 2; i++) t4ArriveSec += routeLegDurationsSec[i];
+      t4ArriveSec += 2 * parSec;
+      const t4ArriveMs = Date.now() + t4ArriveSec * 1000;
+      const hotelDepartMs = Date.now() + depWait * 1000;
+      const minT4DepartMs = hotelDepartMs + 30 * 60 * 1000;
+      const t4DepartMs = snapUpToNextHalfHourMadrid(Math.max(t4ArriveMs, minT4DepartMs));
+      const driveSec = getHotelReturnFromT4DriveSeconds();
+      return Math.max(0, (t4DepartMs - Date.now()) / 1000) + driveSec;
+    }
+
     function getNextHotelOrchestratedDepartureInfo() {
       const now = Date.now();
       const s = madridSecondsSinceMidnight(new Date(now));
@@ -226,9 +247,7 @@
             for (let i = 0; i <= s; i++) sec += routeLegDurationsSec[i];
             sec += s * PARADA_TERMINAL_MIN * 60;
           } else {
-            for (let i = 0; i <= 2; i++) sec += routeLegDurationsSec[i];
-            sec += 3 * PARADA_TERMINAL_MIN * 60;
-            sec += getHotelReturnFromT4DriveSeconds();
+            sec = getHotelArrivalSecOrchestratedFromHotel(departureWaitSec);
           }
         } else {
           sec += remainingOnLegSec;
