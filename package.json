@@ -1,7 +1,7 @@
 {
   "name": "transfer-axor-tracker",
   "version": "1.0.0",
-  "description": "Seguimiento en tiempo real de transfers Campezo 10 ↔ Aeropuerto Barajas",
+  "description": "Seguimiento en tiempo real de transfers Campezo 4 ↔ Aeropuerto Barajas",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

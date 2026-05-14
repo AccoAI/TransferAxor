@@ -1,6 +1,6 @@
 /**
  * Servidor Transfer Axor - Ubicación en tiempo real y pasajeros
- * Ruta: Campezo 10 Madrid ↔ T1, T2, T3, T4 Aeropuerto Barajas
+ * Ruta: Campezo 4 Madrid ↔ T1, T2, T3, T4 Aeropuerto Barajas
  */
 
 const express = require("express");
@@ -28,7 +28,7 @@ const MAX_SIGNUP_PEOPLE = 15;
 /** Tras desconectar el conductor, mantener última posición en mapas hasta este tiempo (ms). */
 const CONDUCTOR_GRACE_MS = Number(process.env.CONDUCTOR_GRACE_MS) || 45 * 60 * 1000;
 
-const CAMPEZO_DEFAULT = { lat: 40.447914, lng: -3.583004 };
+const CAMPEZO_DEFAULT = { lat: 40.4479297, lng: -3.5830589 };
 const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t4"];
 // Destinos válidos desde cualquier parada (el origen no puede coincidir con el destino; se valida en cliente)
 const VALID_DESTINATIONS = new Set(["hotel", "t1", "t2", "t4", "ifema", "simuladores"]);

@@ -20,7 +20,7 @@
 <body class="hotel-page map-page">
   <header class="map-header hotel-header">
     <img src="img/logo-axor.png" alt="Axor Hoteles" class="header-logo">
-    <h1>Transfer — Campezo 10 ↔ Barajas T1–T4</h1>
+    <h1>Transfer — Campezo 4 ↔ Barajas T1–T4</h1>
   </header>
 
   <div class="map-container">
@@ -39,8 +39,8 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const CAMPEZO = { lat: 40.447914, lng: -3.583004 };
-    const CAMPEZO_STR = "Calle Campezo 10, 28022 Madrid";
+    const CAMPEZO = { lat: 40.4479297, lng: -3.5830589 };
+    const CAMPEZO_STR = "Calle Campezo 4, 28022 Madrid";
     const TERMINALES = [
       { key: "t1", lat: 40.46412, lng: -3.57045, name: "Terminal T1 Salidas", link: "https://maps.app.goo.gl/jewMDcD6YS92QkUMA" },
       { key: "t2", lat: 40.46817, lng: -3.56969, name: "Terminal T2 Barajas", link: "https://maps.app.goo.gl/EtAnKzxfKwGc2fyeA" },
@@ -116,8 +116,7 @@
     }
 
     /**
-     * Ranuras :00 y :30 (Madrid) = salida desde T4 hacia el hotel.
-     * Llegada al hotel = esa hora + trayecto T4→hotel (Google Maps).
+     * Ranuras :00 y :30 (Madrid): próxima salida del circuito desde el hotel (Campezo 4).
      */
     function madridSecondsSinceMidnight(date) {
       const parts = new Intl.DateTimeFormat("es-ES", {
@@ -166,16 +165,6 @@
 
     function getSecondsUntilHotelDepartureCircuit(schedule) {
       return getNextHotelOrchestratedDepartureInfo().secondsUntil;
-    }
-
-    function alignOrchestratedT4SlotSeconds(secondsUntilT4Slot) {
-      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return secondsUntilT4Slot;
-      const parSec = PARADA_TERMINAL_MIN * 60;
-      const legHotelToT4 =
-        routeLegDurationsSec[0] + routeLegDurationsSec[1] + routeLegDurationsSec[2] + 2 * parSec;
-      let u = secondsUntilT4Slot;
-      for (let i = 0; i < 64 && u - legHotelToT4 < -30; i++) u += 1800;
-      return u;
     }
 
     function pad2(n) {
@@ -251,37 +240,17 @@
       return etas;
     }
 
-    function computeOrchestratedStopEtasFromT4Slot(secondsUntilT4Slot) {
-      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
-      const parSec = PARADA_TERMINAL_MIN * 60;
-      const d0 = routeLegDurationsSec[0];
-      const d1 = routeLegDurationsSec[1];
-      const d2 = routeLegDurationsSec[2];
-      const legHotelToT4 = d0 + d1 + d2 + 2 * parSec;
-      const untilT4 = alignOrchestratedT4SlotSeconds(secondsUntilT4Slot);
-      const tLeaveHotel = untilT4 - legHotelToT4;
-      const hotelReturnSec = untilT4 + getHotelReturnFromT4DriveSeconds();
-      return [
-        { name: ROUTE_STOP_NAMES[0], sec: tLeaveHotel + d0, text: formatArrivalTimeMadrid(tLeaveHotel + d0) },
-        {
-          name: ROUTE_STOP_NAMES[1],
-          sec: tLeaveHotel + d0 + d1 + parSec,
-          text: formatArrivalTimeMadrid(tLeaveHotel + d0 + d1 + parSec)
-        },
-        { name: ROUTE_STOP_NAMES[2], sec: untilT4, text: formatArrivalTimeMadrid(untilT4) },
-        { name: ROUTE_STOP_NAMES[3], sec: hotelReturnSec, text: formatArrivalTimeMadrid(hotelReturnSec) }
-      ];
-    }
-
     function formatEtasDisplay(stopEtas, depInfo, detailPrefix) {
       if (!stopEtas || !stopEtas.length) return { summary: "—", detail: "" };
       const next = stopEtas[0];
       const summary = "Siguiente: " + next.name + " · llegada " + next.text;
       const lines = stopEtas.map(function(stop) { return stop.name + ": " + stop.text; });
       if (depInfo) {
-        if (depInfo.fromT4) {
+        if (depInfo.departFromHotel) {
           lines.unshift(
-            depInfo.imminent ? "Salida inminente desde T4" : "Salida a las " + depInfo.time + " desde T4"
+            depInfo.imminent
+              ? "Salida inminente desde el hotel"
+              : "Salida a las " + depInfo.time + " desde el hotel"
           );
         } else {
           lines.unshift((depInfo.imminent ? "Salida inminente " : "Salida ") + depInfo.time);
@@ -289,33 +258,6 @@
       }
       if (detailPrefix) lines.unshift(detailPrefix);
       return { summary: summary, detail: lines.join("\n") };
-    }
-
-    function applyOrchestratedCircuitEtasAtHotel(vehicleId, label) {
-      const depRaw = getNextHotelOrchestratedDepartureInfo();
-      const untilT4 = alignOrchestratedT4SlotSeconds(depRaw.secondsUntil);
-      const orch = computeOrchestratedStopEtasFromT4Slot(depRaw.secondsUntil);
-      if (!orch || !orch.length) return;
-      const meta = vehicleMeta[vehicleId] || {};
-      meta.stopEtas = orch;
-      meta.stopEtasAt = Date.now();
-      meta.routeEtaContext = {
-        currentLeg: -1,
-        remainingOnLegSec: 0,
-        departureWaitSec: untilT4
-      };
-      vehicleMeta[vehicleId] = meta;
-      const t4Clock = formatArrivalTimeMadrid(untilT4);
-      const display = formatEtasDisplay(orch, {
-        imminent: untilT4 < 90,
-        time: t4Clock,
-        fromT4: true
-      }, null);
-      setEtaForVehicle(vehicleId, label, {
-        summary: display.summary,
-        detail: display.detail,
-        stopEtas: orch
-      });
     }
 
     function applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, departureWaitSec, depInfo, detailPrefix) {
@@ -368,7 +310,17 @@
           );
           return;
         }
-        applyOrchestratedCircuitEtasAtHotel(vehicleId, label);
+        const sched = svc.circuitSchedule === "B" ? "B" : "A";
+        const dep = getHotelDepartureDisplayCircuit(sched);
+        const depLine = { imminent: dep.imminent, time: dep.time, departFromHotel: true };
+        applyRouteEtas(
+          vehicleId,
+          label,
+          -1,
+          0,
+          getSecondsUntilHotelDepartureCircuit(sched),
+          depLine
+        );
         return;
       }
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
@@ -559,13 +511,13 @@
       const hotelMarker = new google.maps.Marker({
         map: map,
         position: CAMPEZO,
-        title: "Hotel Axor Barajas - Calle Campezo 10",
+        title: "Hotel Axor Barajas - Calle Campezo 4",
         icon: makeStopIcon("H", "#58a6ff")
       });
       stopPoints.push({
         marker: hotelMarker,
         location: "hotel",
-        title: "Hotel Axor Barajas - Calle Campezo 10",
+        title: "Hotel Axor Barajas - Calle Campezo 4",
         link: null
       });
 
