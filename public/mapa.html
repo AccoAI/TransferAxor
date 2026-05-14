@@ -791,9 +791,7 @@
     if (mapRequestTransferViewBtnEl) {
       mapRequestTransferViewBtnEl.addEventListener("click", function() {
         if (!directionsServiceInstance) return;
-        const o = getPassengerSignupOriginLatLng();
-        const d = getPassengerTripEndLatLng();
-        if (o && d && signedUp && tripDestination) {
+        if (getPassengerPortadaRouteRequest()) {
           updatePassengerDirectPreviewRoute(directionsServiceInstance, true);
         } else if (hotelDestRowEl) {
           hotelDestRowEl.hidden = false;
@@ -925,10 +923,16 @@
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
       const destIndex = locationKeyToStopIndex(destKey);
       if (destIndex === null || destIndex === 3) return null;
-      const depSec = getNextHotelOrchestratedDepartureInfo().secondsUntil;
+      const depRaw = getNextHotelOrchestratedDepartureInfo();
+      const untilT4 = alignOrchestratedT4SlotSeconds(depRaw.secondsUntil);
+      const parSec = PARADA_TERMINAL_MIN * 60;
+      const legHotelToT4 =
+        routeLegDurationsSec[0] + routeLegDurationsSec[1] + routeLegDurationsSec[2] + 2 * parSec;
+      const hotelOutboundDepartRel = untilT4 - legHotelToT4;
       let travelSec = 0;
       for (let i = 0; i <= destIndex; i++) travelSec += routeLegDurationsSec[i];
-      return depSec + travelSec;
+      travelSec += destIndex * parSec;
+      return hotelOutboundDepartRel + travelSec;
     }
 
     function updateLegendCompact() {
@@ -943,13 +947,15 @@
           return;
         }
         const dep = getNextHotelOrchestratedDepartureInfo();
+        const untilT4 = alignOrchestratedT4SlotSeconds(dep.secondsUntil);
         const etaSec = computeHotelPassengerEtaSec(tripDestination);
         if (etaSec === null) {
           legendCompactEl.textContent = "Calculando…";
           return;
         }
         const destLabel = DESTINATION_LABELS[tripDestination] || tripDestination;
-        const depLabel = dep.imminent ? "Salida inminente" : "Salida " + dep.time;
+        const t4Clock = formatArrivalTimeMadrid(untilT4);
+        const depLabel = untilT4 < 90 ? "Salida inminente desde T4" : "Salida a las " + t4Clock + " desde T4";
         legendCompactEl.textContent = depLabel + " · " + destLabel + " en " + formatMinutesDelta(etaSec);
         return;
       }
@@ -1000,8 +1006,8 @@
     }
 
     /**
-     * Servicio ordinario desde hotel en dos circuitos intercalados: salidas en :00 y :30 (hora Madrid).
-     * Sin margen tras la hora: a las 13:04 la siguiente ranura es 13:30 (no se asume salida a las 13:00 ya pasada).
+     * Ranuras :00 y :30 (Madrid) = salida del transfer desde T4 hacia el hotel (hora punta en T4).
+     * Llegada al hotel = esa hora + trayecto T4→hotel (Google Maps, ver routeT4ToHotelDriveSec).
      */
     function madridSecondsSinceMidnight(date) {
       const parts = new Intl.DateTimeFormat("es-ES", {
@@ -1052,7 +1058,18 @@
       return getNextHotelOrchestratedDepartureInfo().secondsUntil;
     }
 
-    // Cadencia en hotel: getNextHotelOrchestratedDepartureInfo; serviceMode / circuitSchedule en server.js (conductor).
+    /** Ajusta la siguiente ranura T4 si el hotel «debía» haber salido ya para alcanzar esa T4 a tiempo. */
+    function alignOrchestratedT4SlotSeconds(secondsUntilT4Slot) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return secondsUntilT4Slot;
+      const parSec = PARADA_TERMINAL_MIN * 60;
+      const legHotelToT4 =
+        routeLegDurationsSec[0] + routeLegDurationsSec[1] + routeLegDurationsSec[2] + 2 * parSec;
+      let u = secondsUntilT4Slot;
+      for (let i = 0; i < 64 && u - legHotelToT4 < -30; i++) u += 1800;
+      return u;
+    }
+
+    // Cadencia: getNextHotelOrchestratedDepartureInfo (T4); serviceMode / circuitSchedule en server.js (conductor).
     function pad2(n) {
       return (n < 10 ? "0" : "") + n;
     }
@@ -1249,6 +1266,41 @@
       return waypoints;
     }
 
+    /**
+     * Ruta de portada sin conductor: siempre el recorrido del circuito desde el hotel
+     * (Hotel → T1 → T2 → … hasta la parada de espera), no un tramo directo tipo Hotel→T4.
+     * Desde hotel con destino IFEMA/simuladores: tramo directo (fuera del circuito cerrado).
+     */
+    function getPassengerPortadaRouteRequest() {
+      if (!signedUp || !selectedLocation || !tripDestination) return null;
+      const hotelLl = { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
+
+      if (selectedLocation === "hotel") {
+        const k = String(tripDestination).toLowerCase();
+        if (k === "ifema") {
+          return { origin: hotelLl, destination: { lat: IFEMA.lat, lng: IFEMA.lng }, waypoints: null };
+        }
+        if (k === "simuladores") {
+          return { origin: hotelLl, destination: { lat: SIMULADORES.lat, lng: SIMULADORES.lng }, waypoints: null };
+        }
+        const stopIdx = locationKeyToStopIndex(k);
+        if (stopIdx === null || stopIdx === 3) return null;
+        return {
+          origin: hotelLl,
+          destination: getStopLatLng(stopIdx),
+          waypoints: buildCircuitWaypoints(-1, stopIdx)
+        };
+      }
+
+      const waitIdx = locationKeyToStopIndex(selectedLocation);
+      if (waitIdx === null || waitIdx === 3) return null;
+      return {
+        origin: hotelLl,
+        destination: getStopLatLng(waitIdx),
+        waypoints: buildCircuitWaypoints(-1, waitIdx)
+      };
+    }
+
     function clearPickupRoute() {
       if (activeVehicleIdOnMap) {
         const m = vehicleMeta[activeVehicleIdOnMap];
@@ -1270,9 +1322,13 @@
       if (activeVehicleIdOnMap && lastActiveVehicleEta) return;
       if (!signedUp || !selectedLocation || !tripDestination) return;
 
-      const o = getPassengerSignupOriginLatLng();
-      const d = getPassengerTripEndLatLng();
-      if (!o || !d) return;
+      const portadaReq = getPassengerPortadaRouteRequest();
+      if (!portadaReq || !portadaReq.origin || !portadaReq.destination) {
+        clearPickupRoute();
+        return;
+      }
+      const o = portadaReq.origin;
+      const d = portadaReq.destination;
       if (distanceKm(o.lat, o.lng, d.lat, d.lng) < 0.03) {
         clearPickupRoute();
         return;
@@ -1284,12 +1340,18 @@
       }
       lastPassengerPreviewSnap = snap;
 
-      directionsService.route({
+      const routeArgs = {
         origin: o,
         destination: d,
         travelMode: google.maps.TravelMode.DRIVING,
         region: "es"
-      }, function(result, status) {
+      };
+      if (portadaReq.waypoints && portadaReq.waypoints.length) {
+        routeArgs.waypoints = portadaReq.waypoints;
+        routeArgs.optimizeWaypoints = false;
+      }
+
+      directionsService.route(routeArgs, function(result, status) {
         if (activeVehicleIdOnMap && lastActiveVehicleEta) return;
         if (!signedUp || !selectedLocation || !tripDestination) return;
         if (lastPassengerPreviewSnap !== snap) return;
@@ -1504,28 +1566,62 @@
       return etas;
     }
 
+    /**
+     * Llegadas por parada ancladas a la salida desde T4 en :00/:30 (Madrid).
+     * Hotel = salida T4 + trayecto T4→hotel (Maps).
+     */
+    function computeOrchestratedStopEtasFromT4Slot(secondsUntilT4Slot) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
+      const parSec = PARADA_TERMINAL_MIN * 60;
+      const d0 = routeLegDurationsSec[0];
+      const d1 = routeLegDurationsSec[1];
+      const d2 = routeLegDurationsSec[2];
+      const legHotelToT4 = d0 + d1 + d2 + 2 * parSec;
+      const untilT4 = alignOrchestratedT4SlotSeconds(secondsUntilT4Slot);
+      const tLeaveHotel = untilT4 - legHotelToT4;
+      const hotelReturnSec = untilT4 + getHotelReturnFromT4DriveSeconds();
+      const etas = [
+        { name: ROUTE_STOP_NAMES[0], sec: tLeaveHotel + d0, text: formatArrivalTimeMadrid(tLeaveHotel + d0) },
+        {
+          name: ROUTE_STOP_NAMES[1],
+          sec: tLeaveHotel + d0 + d1 + parSec,
+          text: formatArrivalTimeMadrid(tLeaveHotel + d0 + d1 + parSec)
+        },
+        { name: ROUTE_STOP_NAMES[2], sec: untilT4, text: formatArrivalTimeMadrid(untilT4) },
+        { name: ROUTE_STOP_NAMES[3], sec: hotelReturnSec, text: formatArrivalTimeMadrid(hotelReturnSec) }
+      ];
+      return etas;
+    }
+
     function formatEtasDisplay(stopEtas, depInfo, detailPrefix) {
       if (!stopEtas || !stopEtas.length) return { summary: "—", detail: "" };
       const next = stopEtas[0];
       const summary = "Siguiente: " + next.name + " · llegada " + next.text;
       const lines = stopEtas.map(function(stop) { return stop.name + ": " + stop.text; });
       if (depInfo) {
-        lines.unshift((depInfo.imminent ? "Salida inminente " : "Salida ") + depInfo.time);
+        if (depInfo.fromT4) {
+          lines.unshift(
+            depInfo.imminent ? "Salida inminente desde T4" : "Salida a las " + depInfo.time + " desde T4"
+          );
+        } else {
+          lines.unshift((depInfo.imminent ? "Salida inminente " : "Salida ") + depInfo.time);
+        }
       }
       if (detailPrefix) lines.unshift(detailPrefix);
       return { summary: summary, detail: lines.join("\n") };
     }
 
     /**
-     * Pasajero en hotel: la fila del vehículo activo (resumen + desplegable) debe usar la próxima salida
-     * :00/:30, no la posición del transfer en circuito.
+     * Pasajero en hotel: fila del vehículo activo con ranura :00/:30 = salida desde T4;
+     * fila Hotel = esa hora + T4→hotel (Maps). Ver computeOrchestratedStopEtasFromT4Slot.
      */
     function paintActiveVehicleRowOrchestratedHotelEtas() {
       if (!activeVehicleIdOnMap) return;
       if (!signedUp || selectedLocation !== "hotel" || !tripDestination) return;
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return;
-      const depInfo = getNextHotelOrchestratedDepartureInfo();
-      const orch = computeStopEtas(-1, 0, depInfo.secondsUntil);
+      const depRaw = getNextHotelOrchestratedDepartureInfo();
+      const untilT4 = alignOrchestratedT4SlotSeconds(depRaw.secondsUntil);
+      const orch = computeOrchestratedStopEtasFromT4Slot(depRaw.secondsUntil);
       if (!orch || !orch.length) return;
       const vid = activeVehicleIdOnMap;
       const meta = vehicleMeta[vid] || {};
@@ -1534,10 +1630,15 @@
       meta.routeEtaContext = {
         currentLeg: -1,
         remainingOnLegSec: 0,
-        departureWaitSec: depInfo.secondsUntil
+        departureWaitSec: untilT4
       };
       vehicleMeta[vid] = meta;
-      const disp = formatEtasDisplay(orch, { imminent: depInfo.imminent, time: depInfo.time }, null);
+      const t4Clock = formatArrivalTimeMadrid(untilT4);
+      const disp = formatEtasDisplay(orch, {
+        imminent: untilT4 < 90,
+        time: t4Clock,
+        fromT4: true
+      }, null);
       const el = document.getElementById(etaEl[vid]);
       if (el) el.textContent = disp.summary;
       const statusNode = document.getElementById(statusEl[vid]);
@@ -1560,6 +1661,33 @@
         summary: display.summary,
         detail: display.detail,
         stopEtas: stopEtas
+      });
+    }
+
+    function applyOrchestratedCircuitEtasAtHotel(vehicleId, label) {
+      const depRaw = getNextHotelOrchestratedDepartureInfo();
+      const untilT4 = alignOrchestratedT4SlotSeconds(depRaw.secondsUntil);
+      const orch = computeOrchestratedStopEtasFromT4Slot(depRaw.secondsUntil);
+      if (!orch || !orch.length) return;
+      const meta = vehicleMeta[vehicleId] || {};
+      meta.stopEtas = orch;
+      meta.stopEtasAt = Date.now();
+      meta.routeEtaContext = {
+        currentLeg: -1,
+        remainingOnLegSec: 0,
+        departureWaitSec: untilT4
+      };
+      vehicleMeta[vehicleId] = meta;
+      const t4Clock = formatArrivalTimeMadrid(untilT4);
+      const display = formatEtasDisplay(orch, {
+        imminent: untilT4 < 90,
+        time: t4Clock,
+        fromT4: true
+      }, null);
+      setEtaForVehicle(vehicleId, label, {
+        summary: display.summary,
+        detail: display.detail,
+        stopEtas: orch
       });
     }
 
@@ -1616,9 +1744,7 @@
           );
           return;
         }
-        const sched = svc.circuitSchedule === "B" ? "B" : "A";
-        const dep = getHotelDepartureDisplayCircuit(sched);
-        applyRouteEtas(vehicleId, label, -1, 0, getSecondsUntilHotelDepartureCircuit(sched), dep);
+        applyOrchestratedCircuitEtasAtHotel(vehicleId, label);
         return;
       }
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
