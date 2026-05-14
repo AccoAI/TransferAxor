@@ -65,9 +65,36 @@
     var activeVehicleIdOnMap = null;
     var lastActiveVehicleEta = null;
     let routeLegDurationsSec = null;
+    let routeT4ToHotelDriveSec = null;
     const PARADA_TERMINAL_MIN = 0;
     const ROUTE_STOP_NAMES = ["T1", "T2", "T4", "Hotel"];
     const MADRID_TZ = "Europe/Madrid";
+
+    function getHotelReturnFromT4DriveSeconds() {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return 0;
+      const circuit = routeLegDurationsSec[3];
+      if (routeT4ToHotelDriveSec == null) return circuit;
+      return Math.max(circuit, routeT4ToHotelDriveSec);
+    }
+
+    function fetchRouteT4ToHotelDrive(directionsService, onDone) {
+      if (!directionsService || !TERMINALES || TERMINALES.length < 3) {
+        if (typeof onDone === "function") onDone();
+        return;
+      }
+      const t4 = TERMINALES[2];
+      directionsService.route({
+        origin: { lat: t4.lat, lng: t4.lng },
+        destination: { lat: CAMPEZO.lat, lng: CAMPEZO.lng },
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      }, function(result, status) {
+        if (status === google.maps.DirectionsStatus.OK && result.routes[0] && result.routes[0].legs[0]) {
+          routeT4ToHotelDriveSec = result.routes[0].legs[0].duration.value;
+        }
+        if (typeof onDone === "function") onDone();
+      });
+    }
 
     function distanceKm(lat1, lon1, lat2, lon2) {
       const R = 6371;
@@ -196,8 +223,14 @@
       for (let s = start; s < 4; s++) {
         let sec = departureWaitSec || 0;
         if (currentLeg < 0) {
-          for (let i = 0; i <= s; i++) sec += routeLegDurationsSec[i];
-          sec += s * PARADA_TERMINAL_MIN * 60;
+          if (s < 3) {
+            for (let i = 0; i <= s; i++) sec += routeLegDurationsSec[i];
+            sec += s * PARADA_TERMINAL_MIN * 60;
+          } else {
+            for (let i = 0; i <= 2; i++) sec += routeLegDurationsSec[i];
+            sec += 3 * PARADA_TERMINAL_MIN * 60;
+            sec += getHotelReturnFromT4DriveSeconds();
+          }
         } else {
           sec += remainingOnLegSec;
           for (let i = currentLeg + 1; i <= s; i++) sec += routeLegDurationsSec[i];
@@ -438,8 +471,12 @@
         if (status === google.maps.DirectionsStatus.OK) {
           directionsRenderer.setDirections(result);
           routeLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
+          routeT4ToHotelDriveSec = null;
           scheduleFitRouteViewport(result);
           refreshActiveVehicleEta(directionsService);
+          fetchRouteT4ToHotelDrive(directionsService, function() {
+            refreshActiveVehicleEta(directionsService);
+          });
         }
       });
 
