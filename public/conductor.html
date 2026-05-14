@@ -61,7 +61,6 @@
       <div class="conductor-wait-row"><span>Hotel Campezo 10</span><strong id="wait-hotel">0</strong></div>
       <div class="conductor-wait-row"><span>Terminal T1</span><strong id="wait-t1">0</strong></div>
       <div class="conductor-wait-row"><span>Terminal T2</span><strong id="wait-t2">0</strong></div>
-      <div class="conductor-wait-row"><span>Terminal T3</span><strong id="wait-t3">0</strong></div>
       <div class="conductor-wait-row"><span>Terminal T4</span><strong id="wait-t4">0</strong></div>
     </section>
 
@@ -177,7 +176,7 @@
     }
 
     function updateWaitingDisplay(counts) {
-      ["hotel", "t1", "t2", "t3", "t4"].forEach(function(key) {
+      ["hotel", "t1", "t2", "t4"].forEach(function(key) {
         const el = document.getElementById("wait-" + key);
         if (el) el.textContent = String((counts && counts[key]) || 0);
       });

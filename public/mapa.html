@@ -34,21 +34,32 @@
     <h1>Transfer — Campezo 10 ↔ Barajas T1–T4</h1>
   </header>
   <section class="client-signup" id="clientSignup">
-    <span class="client-signup-label">¿Dónde esperas?</span>
-    <div class="client-signup-stops" id="signupStops" role="group" aria-label="Parada">
-      <button type="button" class="client-signup-stop" data-location="hotel">Hotel</button>
-      <button type="button" class="client-signup-stop" data-location="t1">T1</button>
-      <button type="button" class="client-signup-stop" data-location="t2">T2</button>
-      <button type="button" class="client-signup-stop" data-location="t3">T3</button>
-      <button type="button" class="client-signup-stop" data-location="t4">T4</button>
+    <!-- Estado de la detección automática de ubicación -->
+    <div class="client-signup-locate" id="locateRow">
+      <button type="button" class="client-signup-locate-btn" id="locateBtn" aria-label="Detectar mi ubicación">
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/>
+        </svg>
+        Detectar ubicación
+      </button>
+      <span class="client-signup-locate-status" id="locateStatus"></span>
+    </div>
+    <!-- Selector manual: visible solo cuando GPS no reconoce ninguna parada -->
+    <div id="manualStopsRow" hidden>
+      <span class="client-signup-label">¿Dónde esperas?</span>
+      <div class="client-signup-stops" id="signupStops" role="group" aria-label="Parada">
+        <button type="button" class="client-signup-stop" data-location="hotel">Hotel</button>
+        <button type="button" class="client-signup-stop" data-location="t1">T1</button>
+        <button type="button" class="client-signup-stop" data-location="t2">T2</button>
+        <button type="button" class="client-signup-stop" data-location="t4">T4</button>
+      </div>
     </div>
     <div class="client-signup-dest" id="hotelDestRow" hidden>
       <div class="client-signup-dest-inner">
         <span class="client-signup-label client-signup-dest-label">Destino</span>
-        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino desde el hotel: T1, T2, T3, T4, IFEMA o Simuladores">
+        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino desde el hotel: T1, T2, T4, IFEMA o Simuladores">
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t1">T1</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t2">T2</button>
-          <button type="button" class="client-signup-stop client-signup-dest" data-dest="t3">T3</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t4">T4</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="ifema">IFEMA</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="simuladores">Simuladores</button>
@@ -84,7 +95,7 @@
         <option value="hotel">Hotel Campezo 10</option>
         <option value="t1">Terminal T1</option>
         <option value="t2">Terminal T2</option>
-        <option value="t3">Terminal T3</option>
+
         <option value="t4">Terminal T4</option>
       </select>
       <div id="scheduleDatetimeFields">
@@ -123,7 +134,7 @@
       </button>
       <div class="legend-sheet-body" id="legendBody">
       <div class="legend-section">
-        <div class="legend-eta-title">Vehículos — llegadas por parada, horario Madrid (Hotel → T1 → T2 → T3 → T4 → Hotel)</div>
+        <div class="legend-eta-title">Vehículos — llegadas por parada, horario Madrid (Hotel → T1 → T2 → T4 → Hotel)</div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito1"><span class="legend-dot vito1"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito NJC</span><span class="legend-pax" id="pax1"></span><span class="legend-eta" id="eta1"></span></div><div class="legend-vehicle-status" id="status1"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito2"><span class="legend-dot vito2"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito LZD</span><span class="legend-pax" id="pax2"></span><span class="legend-eta" id="eta2"></span></div><div class="legend-vehicle-status" id="status2"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito3"><span class="legend-dot vito3"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito MMR</span><span class="legend-pax" id="pax3"></span><span class="legend-eta" id="eta3"></span></div><div class="legend-vehicle-status" id="status3"></div></div></div>
@@ -139,11 +150,10 @@
     // Hotel Axor Barajas, Calle Campezo 10, 28022 Madrid (coordenadas del hotel)
     const CAMPEZO = { lat: 40.447914, lng: -3.583004 };
     const CAMPEZO_STR = "Calle Campezo 10, 28022 Madrid";
-    // Terminales Barajas (paradas con enlace Google Maps)
+    // Terminales Barajas (paradas con enlace Google Maps) — ruta: Hotel → T1 → T2 → T4 → Hotel
     const TERMINALES = [
       { lat: 40.46412, lng: -3.57045, name: "Terminal T1 Salidas", link: "https://maps.app.goo.gl/jewMDcD6YS92QkUMA" },
       { lat: 40.46817, lng: -3.56969, name: "Terminal T2 Barajas", link: "https://maps.app.goo.gl/EtAnKzxfKwGc2fyeA" },
-      { lat: 40.47044, lng: -3.57117, name: "Terminal T3 Barajas", link: "https://maps.app.goo.gl/R91V3qW8t1vhRaMo6" },
       { lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
     ];
     const IFEMA = { lat: 40.4643, lng: -3.6167 };
@@ -160,13 +170,11 @@
       hotel: "Hotel Campezo 10",
       t1: "Terminal T1",
       t2: "Terminal T2",
-      t3: "Terminal T3",
       t4: "Terminal T4"
     };
     const DESTINATION_LABELS = {
       t1: "T1",
       t2: "T2",
-      t3: "T3",
       t4: "T4",
       ifema: "IFEMA",
       simuladores: "Simuladores"
@@ -175,7 +183,6 @@
       hotel: "Hotel",
       t1: "T1",
       t2: "T2",
-      t3: "T3",
       t4: "T4",
       ifema: "IFEMA",
       simuladores: "Simuladores"
@@ -198,7 +205,95 @@
     let tripDestination = null;
     /** Tras apuntarse en terminal, si pulsa Hotel: cancelamos y abrimos el selector de destino del hotel. */
     let pendingSwitchToHotelAfterCancel = false;
-    const TERMINAL_LOCATIONS = { t1: true, t2: true, t3: true, t4: true };
+    const TERMINAL_LOCATIONS = { t1: true, t2: true, t4: true };
+
+    /** Radio en km para considerar que el pasajero está en una parada. */
+    const STOP_DETECT_RADIUS_KM = 0.35;
+
+    /** Referencia al elemento de estado de geolocalización. */
+    const locateBtnEl = document.getElementById("locateBtn");
+    const locateStatusEl = document.getElementById("locateStatus");
+    const manualStopsRowEl = document.getElementById("manualStopsRow");
+
+    function setLocateStatus(text, isError) {
+      if (!locateStatusEl) return;
+      locateStatusEl.textContent = text;
+      locateStatusEl.className = "client-signup-locate-status" + (isError ? " locate-error" : "");
+    }
+
+    function showManualStops() {
+      if (manualStopsRowEl) manualStopsRowEl.hidden = false;
+    }
+
+    /** Devuelve el locationKey de la parada más cercana si está dentro del radio, o null. */
+    function detectStopFromCoords(lat, lng) {
+      const stops = [
+        { key: "hotel", lat: CAMPEZO.lat, lng: CAMPEZO.lng },
+        { key: "t1",    lat: TERMINALES[0].lat, lng: TERMINALES[0].lng },
+        { key: "t2",    lat: TERMINALES[1].lat, lng: TERMINALES[1].lng },
+        { key: "t4",    lat: TERMINALES[2].lat, lng: TERMINALES[2].lng },
+        { key: "t4",    lat: TERMINALES[3].lat, lng: TERMINALES[3].lng },
+      ];
+      var best = null;
+      var bestDist = Infinity;
+      for (var i = 0; i < stops.length; i++) {
+        var d = distanceKm(lat, lng, stops[i].lat, stops[i].lng);
+        if (d < bestDist) { bestDist = d; best = stops[i].key; }
+      }
+      return bestDist <= STOP_DETECT_RADIUS_KM ? best : null;
+    }
+
+    function handleLocateSuccess(pos) {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const stop = detectStopFromCoords(lat, lng);
+      if (stop) {
+        setLocateStatus("Ubicación detectada: " + (SIGNUP_LABELS[stop] || stop), false);
+        if (stop === "hotel") {
+          beginHotelSignupFlow();
+        } else {
+          submitSignupAtTerminal(stop);
+        }
+      } else {
+        setLocateStatus("No estás en ninguna parada conocida. Indica dónde esperas:", false);
+        showManualStops();
+      }
+    }
+
+    function handleLocateError(err) {
+      var msg = "No se pudo obtener ubicación.";
+      if (err && err.code === 1) msg = "Permiso de ubicación denegado.";
+      else if (err && err.code === 2) msg = "Ubicación no disponible.";
+      setLocateStatus(msg + " Indica dónde esperas:", true);
+      showManualStops();
+    }
+
+    function requestLocation() {
+      if (!navigator.geolocation) {
+        setLocateStatus("GPS no disponible. Indica dónde esperas:", true);
+        showManualStops();
+        return;
+      }
+      setLocateStatus("Detectando…", false);
+      if (locateBtnEl) locateBtnEl.disabled = true;
+      navigator.geolocation.getCurrentPosition(
+        function(pos) {
+          if (locateBtnEl) locateBtnEl.disabled = false;
+          handleLocateSuccess(pos);
+        },
+        function(err) {
+          if (locateBtnEl) locateBtnEl.disabled = false;
+          handleLocateError(err);
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+      );
+    }
+
+    if (locateBtnEl) {
+      locateBtnEl.addEventListener("click", requestLocation);
+    }
+    // Intentar geolocalización automática al cargar
+    requestLocation();
 
     function getPickupRouteCacheKey() {
       if (!signedUp || !selectedLocation) return "";
@@ -374,7 +469,7 @@
       setSelectedLocation("hotel");
       tripDestination = null;
       syncHotelDestRow();
-      signupStatusEl.textContent = "Elige destino: T1, T2, T3, T4, IFEMA o Simuladores";
+      signupStatusEl.textContent = "Elige destino: T1, T2, T4, IFEMA o Simuladores";
     }
 
     function submitHotelSignupWithDestination(dest) {
@@ -417,6 +512,9 @@
     function setSignedUp(active, location, people) {
       signedUp = active;
       cancelSignupBtnEl.hidden = !active;
+      // Al estar apuntado, ocultar el botón de localizar y el selector manual
+      if (locateBtnEl) locateBtnEl.closest(".client-signup-locate").hidden = active;
+      if (manualStopsRowEl && active) manualStopsRowEl.hidden = true;
       if (active && location) {
         setSelectedLocation(location);
         updateSignupStatus(location, people);
@@ -487,7 +585,16 @@
         pendingSwitchToHotelAfterCancel = false;
         setSignedUp(false, null, 0);
         updatePartyControls();
-        if (openHotelPicker) beginHotelSignupFlow();
+        if (openHotelPicker) {
+          beginHotelSignupFlow();
+        } else {
+          if (locateBtnEl) {
+            locateBtnEl.closest(".client-signup-locate").hidden = false;
+            locateBtnEl.disabled = false;
+          }
+          setLocateStatus("", false);
+          if (manualStopsRowEl) manualStopsRowEl.hidden = true;
+        }
       }
     });
 
@@ -705,10 +812,11 @@
     var lastVehiclesLive = {};
     var activeVehicleIdOnMap = null;
     var lastActiveVehicleEta = null;
-    // Duraciones de cada tramo del circuito (segundos), rellenado cuando carga la ruta: [Hotel→T1, T1→T2, T2→T3, T3→T4, T4→Hotel]
+    // Duraciones de cada tramo del circuito (segundos), rellenado cuando carga la ruta: [Hotel→T1, T1→T2, T2→T4, T4→Hotel]
     let routeLegDurationsSec = null;
     const PARADA_TERMINAL_MIN = 0;
-    const ROUTE_STOP_NAMES = ["T1", "T2", "T3", "T4", "Hotel"];
+    // Ruta: Hotel → T1 → T2 → T4 → Hotel (4 tramos, 4 paradas + hotel)
+    const ROUTE_STOP_NAMES = ["T1", "T2", "T4", "Hotel"];
     const MADRID_TZ = "Europe/Madrid";
 
     function getDestinationStopName() {
@@ -718,7 +826,7 @@
     }
 
     function computeEtaSecondsToStop(currentLeg, remainingOnLegSec, departureWaitSec, stopName) {
-      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) return null;
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
       const targetIdx = ROUTE_STOP_NAMES.indexOf(stopName);
       if (targetIdx < 0) return null;
       const start = currentLeg < 0 ? 0 : currentLeg;
@@ -759,10 +867,52 @@
       return Math.max(0, baseSec - elapsed);
     }
 
+    /**
+     * ETA en segundos desde ahora para un pasajero en el hotel hacia destKey,
+     * usando la cadencia del servicio ordinario (schedule "A" o "B").
+     */
+    function computeHotelPassengerEtaSec(destKey, schedule) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
+      const destIndex = locationKeyToStopIndex(destKey);
+      if (destIndex === null || destIndex === 3) return null;
+      const depSec = getSecondsUntilHotelDepartureCircuit(schedule);
+      let travelSec = 0;
+      for (let i = 0; i <= destIndex; i++) travelSec += routeLegDurationsSec[i];
+      return depSec + travelSec;
+    }
+
     function updateLegendCompact() {
       if (!legendCompactEl) return;
-      const destination = getDestinationStopName();
       const vehicleId = activeVehicleIdOnMap;
+
+      // Pasajero en el hotel: ETA desde próxima salida del circuito, no desde posición del vehículo
+      if (selectedLocation === "hotel" && tripDestination) {
+        if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
+          legendCompactEl.textContent = "Calculando ruta…";
+          return;
+        }
+        const svc = vehicleId ? getVehicleService(vehicleId) : null;
+        const schedule = (svc && svc.serviceMode === "circuit")
+          ? (svc.circuitSchedule === "B" ? "B" : "A")
+          : (function() {
+              // Sin vehículo de circuito activo: usar la salida más próxima entre A y B
+              const secA = getSecondsUntilHotelDepartureCircuit("A");
+              const secB = getSecondsUntilHotelDepartureCircuit("B");
+              return secA <= secB ? "A" : "B";
+            })();
+        const dep = getHotelDepartureDisplayCircuit(schedule);
+        const etaSec = computeHotelPassengerEtaSec(tripDestination, schedule);
+        if (etaSec === null) {
+          legendCompactEl.textContent = "Calculando…";
+          return;
+        }
+        const destLabel = DESTINATION_LABELS[tripDestination] || tripDestination;
+        const depLabel = dep.imminent ? "Salida inminente" : "Salida " + dep.time;
+        legendCompactEl.textContent = depLabel + " · " + destLabel + " en " + formatMinutesDelta(etaSec);
+        return;
+      }
+
+      const destination = getDestinationStopName();
       if (!destination) {
         legendCompactEl.textContent = "Apúntate para ver tu llegada";
         return;
@@ -778,15 +928,11 @@
         return;
       }
       const baseLabel = SIGNUP_LABELS[selectedLocation] || selectedLocation;
-      const destSuffix = selectedLocation === "hotel" && tripDestination
-        ? " · " + (DESTINATION_LABELS[tripDestination] || tripDestination)
-        : "";
-      const label = baseLabel + destSuffix;
       const vehicleLabel = meta.label || vehicleId;
-      legendCompactEl.textContent = vehicleLabel + " · " + label + " en " + formatMinutesDelta(remaining);
+      legendCompactEl.textContent = vehicleLabel + " · " + baseLabel + " en " + formatMinutesDelta(remaining);
     }
 
-    setInterval(updateLegendCompact, 10000);
+    setInterval(updateLegendCompact, 30000);
 
     function distanceKm(lat1, lon1, lat2, lon2) {
       const R = 6371;
@@ -869,13 +1015,13 @@
     }
 
     function locationKeyToStopIndex(locationKey) {
-      if (locationKey === "hotel") return 4;
-      const indexByLocation = { t1: 0, t2: 1, t3: 2, t4: 3 };
+      if (locationKey === "hotel") return 3;
+      const indexByLocation = { t1: 0, t2: 1, t4: 2 };
       return indexByLocation[locationKey] !== undefined ? indexByLocation[locationKey] : null;
     }
 
     function getStopLatLng(stopIndex) {
-      if (stopIndex === 4) return { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
+      if (stopIndex === 3) return { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
       return { lat: TERMINALES[stopIndex].lat, lng: TERMINALES[stopIndex].lng };
     }
 
@@ -994,6 +1140,7 @@
       }
     }
 
+    // Circuito: Hotel(idx -1) → T1(0) → T2(1) → T4(2) → Hotel(3)
     function buildCircuitWaypoints(currentLeg, destinationStopIndex) {
       const waypoints = [];
       if (currentLeg < 0) {
@@ -1009,7 +1156,7 @@
         return waypoints;
       }
       if (destinationStopIndex < currentLeg) {
-        for (let i = currentLeg; i <= 4; i++) {
+        for (let i = currentLeg; i <= 3; i++) {
           waypoints.push({ location: getStopLatLng(i), stopover: true });
         }
         for (let i = 0; i < destinationStopIndex; i++) {
@@ -1154,36 +1301,34 @@
       );
     }
 
-    // Puntos finales de cada tramo: leg 0→T1, 1→T2, 2→T3, 3→T4, 4→Hotel
+    // Puntos finales de cada tramo: leg 0→T1, 1→T2, 2→T4, 3→Hotel
     function getEndOfLeg(legIndex) {
-      if (legIndex < 4) return { lat: TERMINALES[legIndex].lat, lng: TERMINALES[legIndex].lng };
+      if (legIndex < 3) return { lat: TERMINALES[legIndex].lat, lng: TERMINALES[legIndex].lng };
       return { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
     }
 
-    // Devuelve en qué tramo del circuito está el vehículo (0=Hotel→T1, 1=T1→T2, ..., 4=T4→Hotel). -1 si está en el hotel.
+    // Devuelve en qué tramo del circuito está el vehículo (0=Hotel→T1, 1=T1→T2, 2=T2→T4, 3=T4→Hotel). -1 si está en el hotel.
     function getCurrentLegIndex(lat, lng) {
       const dHotel = distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng);
       if (dHotel < 0.15) return -1;
       const d = [
         distanceKm(lat, lng, TERMINALES[0].lat, TERMINALES[0].lng),
         distanceKm(lat, lng, TERMINALES[1].lat, TERMINALES[1].lng),
-        distanceKm(lat, lng, TERMINALES[2].lat, TERMINALES[2].lng),
-        distanceKm(lat, lng, TERMINALES[3].lat, TERMINALES[3].lng)
+        distanceKm(lat, lng, TERMINALES[2].lat, TERMINALES[2].lng)
       ];
       const iMin = d.indexOf(Math.min.apply(null, d));
       const distToHotel = dHotel;
-      if (distToHotel <= d[0] && distToHotel <= d[1] && distToHotel <= d[2] && distToHotel <= d[3]) return 4;
-      if (iMin === 0) return distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng) <= d[1] ? 0 : 1;
+      if (distToHotel <= d[0] && distToHotel <= d[1] && distToHotel <= d[2]) return 3;
+      if (iMin === 0) return d[0] <= d[1] ? 0 : 1;
       if (iMin === 1) return d[0] <= d[2] ? 1 : 2;
-      if (iMin === 2) return d[1] <= d[3] ? 2 : 3;
-      return d[2] <= distToHotel ? 3 : 4;
+      return d[1] <= distToHotel ? 2 : 3;
     }
 
     function computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec) {
-      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) return null;
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
       const etas = [];
       const start = currentLeg < 0 ? 0 : currentLeg;
-      for (let s = start; s < 5; s++) {
+      for (let s = start; s < 4; s++) {
         let sec = departureWaitSec || 0;
         if (currentLeg < 0) {
           for (let i = 0; i <= s; i++) sec += routeLegDurationsSec[i];
@@ -1265,7 +1410,7 @@
       const forceRefresh = force === true;
       const currentLeg = getCurrentLegIndex(lat, lng);
       if (currentLeg < 0) {
-        if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
+        if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
           setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
           return;
         }
@@ -1287,7 +1432,7 @@
         applyRouteEtas(vehicleId, label, -1, 0, getSecondsUntilHotelDepartureCircuit(sched), dep);
         return;
       }
-      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
         setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
         return;
       }
@@ -1443,7 +1588,7 @@
         }
       });
 
-      // Ruta circular: Campezo 10 → T1 → T2 → T3 → T4 → Campezo 10 (por carretera)
+      // Ruta circular: Campezo 10 → T1 → T2 → T4 → Campezo 10 (por carretera)
       const directionsService = new google.maps.DirectionsService();
       directionsServiceInstance = directionsService;
       const request = {

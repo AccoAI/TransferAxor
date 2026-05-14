@@ -27,7 +27,7 @@
     <div id="map"></div>
     <div class="legend display-board hotel-board" id="legend">
       <div class="legend-section">
-        <div class="legend-eta-title">Vehículos — llegadas por parada, horario Madrid (Hotel → T1 → T2 → T3 → T4 → Hotel)</div>
+        <div class="legend-eta-title">Vehículos — llegadas por parada, horario Madrid (Hotel → T1 → T2 → T4 → Hotel)</div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito1"><span class="legend-dot vito1"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito NJC</span><span class="legend-pax" id="pax1"></span><span class="legend-eta" id="eta1"></span></div><div class="legend-vehicle-status" id="status1"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito2"><span class="legend-dot vito2"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito LZD</span><span class="legend-pax" id="pax2"></span><span class="legend-eta" id="eta2"></span></div><div class="legend-vehicle-status" id="status2"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito3"><span class="legend-dot vito3"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito MMR</span><span class="legend-pax" id="pax3"></span><span class="legend-eta" id="eta3"></span></div><div class="legend-vehicle-status" id="status3"></div></div></div>
@@ -44,7 +44,6 @@
     const TERMINALES = [
       { lat: 40.46412, lng: -3.57045, name: "Terminal T1 Salidas", link: "https://maps.app.goo.gl/jewMDcD6YS92QkUMA" },
       { lat: 40.46817, lng: -3.56969, name: "Terminal T2 Barajas", link: "https://maps.app.goo.gl/EtAnKzxfKwGc2fyeA" },
-      { lat: 40.47044, lng: -3.57117, name: "Terminal T3 Barajas", link: "https://maps.app.goo.gl/R91V3qW8t1vhRaMo6" },
       { lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
     ];
 
@@ -67,7 +66,7 @@
     var lastActiveVehicleEta = null;
     let routeLegDurationsSec = null;
     const PARADA_TERMINAL_MIN = 0;
-    const ROUTE_STOP_NAMES = ["T1", "T2", "T3", "T4", "Hotel"];
+    const ROUTE_STOP_NAMES = ["T1", "T2", "T4", "Hotel"];
     const MADRID_TZ = "Europe/Madrid";
 
     function distanceKm(lat1, lon1, lat2, lon2) {
@@ -142,34 +141,34 @@
       });
     }
 
+    // Tramos: leg 0→T1, 1→T2, 2→T4, 3→Hotel
     function getEndOfLeg(legIndex) {
-      if (legIndex < 4) return { lat: TERMINALES[legIndex].lat, lng: TERMINALES[legIndex].lng };
+      if (legIndex < 3) return { lat: TERMINALES[legIndex].lat, lng: TERMINALES[legIndex].lng };
       return { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
     }
 
+    // 0=Hotel→T1, 1=T1→T2, 2=T2→T4, 3=T4→Hotel, -1=en hotel
     function getCurrentLegIndex(lat, lng) {
       const dHotel = distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng);
       if (dHotel < 0.15) return -1;
       const d = [
         distanceKm(lat, lng, TERMINALES[0].lat, TERMINALES[0].lng),
         distanceKm(lat, lng, TERMINALES[1].lat, TERMINALES[1].lng),
-        distanceKm(lat, lng, TERMINALES[2].lat, TERMINALES[2].lng),
-        distanceKm(lat, lng, TERMINALES[3].lat, TERMINALES[3].lng)
+        distanceKm(lat, lng, TERMINALES[2].lat, TERMINALES[2].lng)
       ];
       const iMin = d.indexOf(Math.min.apply(null, d));
       const distToHotel = dHotel;
-      if (distToHotel <= d[0] && distToHotel <= d[1] && distToHotel <= d[2] && distToHotel <= d[3]) return 4;
-      if (iMin === 0) return distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng) <= d[1] ? 0 : 1;
+      if (distToHotel <= d[0] && distToHotel <= d[1] && distToHotel <= d[2]) return 3;
+      if (iMin === 0) return d[0] <= d[1] ? 0 : 1;
       if (iMin === 1) return d[0] <= d[2] ? 1 : 2;
-      if (iMin === 2) return d[1] <= d[3] ? 2 : 3;
-      return d[2] <= distToHotel ? 3 : 4;
+      return d[1] <= distToHotel ? 2 : 3;
     }
 
     function computeStopEtas(currentLeg, remainingOnLegSec, departureWaitSec) {
-      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) return null;
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
       const etas = [];
       const start = currentLeg < 0 ? 0 : currentLeg;
-      for (let s = start; s < 5; s++) {
+      for (let s = start; s < 4; s++) {
         let sec = departureWaitSec || 0;
         if (currentLeg < 0) {
           for (let i = 0; i <= s; i++) sec += routeLegDurationsSec[i];
@@ -229,7 +228,7 @@
     function updateEtaFromGoogle(vehicleId, lat, lng, label, directionsService) {
       const currentLeg = getCurrentLegIndex(lat, lng);
       if (currentLeg < 0) {
-        if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
+        if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
           setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
           return;
         }
@@ -251,7 +250,7 @@
         applyRouteEtas(vehicleId, label, -1, 0, getSecondsUntilHotelDepartureCircuit(sched), dep);
         return;
       }
-      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 5) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
         setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
         return;
       }

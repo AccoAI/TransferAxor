@@ -29,8 +29,8 @@ const MAX_SIGNUP_PEOPLE = 15;
 const CONDUCTOR_GRACE_MS = Number(process.env.CONDUCTOR_GRACE_MS) || 45 * 60 * 1000;
 
 const CAMPEZO_DEFAULT = { lat: 40.447914, lng: -3.583004 };
-const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t3", "t4"];
-const HOTEL_DESTINATIONS = new Set(["t1", "t2", "t3", "t4", "ifema", "simuladores"]);
+const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t4"];
+const HOTEL_DESTINATIONS = new Set(["t1", "t2", "t4", "ifema", "simuladores"]);
 
 /** circuit: ruta circular programada. adhoc: IFEMA, simuladores, apoyo, etc. (editable por vehículo) */
 const vehicles = {
@@ -129,7 +129,7 @@ app.get("/conductor", (req, res) => res.sendFile(path.join(__dirname, "public", 
 app.get("/apuntarse", (req, res) => res.redirect("/"));
 
 function emptyWaitingCounts() {
-  return { hotel: 0, t1: 0, t2: 0, t3: 0, t4: 0 };
+  return { hotel: 0, t1: 0, t2: 0, t4: 0 };
 }
 
 function getWaitingCounts() {

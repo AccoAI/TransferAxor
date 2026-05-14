@@ -341,6 +341,50 @@ body {
   flex-shrink: 0;
 }
 
+.client-signup-locate {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.client-signup-locate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 0.82rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.client-signup-locate-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.1);
+}
+
+.client-signup-locate-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.client-signup-locate-status {
+  font-size: 0.78rem;
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+}
+
+.client-signup-locate-status.locate-error {
+  color: var(--red);
+}
+
 .client-signup-label {
   font-size: 0.8rem;
   color: var(--muted);
