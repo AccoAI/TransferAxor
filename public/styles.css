@@ -687,6 +687,36 @@ body {
   background: #1a2332;
 }
 
+.map-no-vehicle-banner {
+  position: absolute;
+  z-index: 340;
+  left: max(0.5rem, env(safe-area-inset-left));
+  right: max(0.5rem, env(safe-area-inset-right));
+  top: max(0.5rem, env(safe-area-inset-top));
+  max-width: 22rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(26, 35, 50, 0.94);
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.38;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.map-no-vehicle-banner-title {
+  display: block;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.28rem;
+  font-size: 0.82rem;
+}
+
+.map-no-vehicle-banner-text {
+  display: block;
+}
+
 .map-recenter-btn {
   position: absolute;
   z-index: 2050;

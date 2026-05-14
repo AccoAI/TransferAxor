@@ -122,6 +122,10 @@
 
   <div class="map-container">
     <div id="map"></div>
+    <div class="map-no-vehicle-banner" id="mapNoVehicleBanner" role="status" hidden>
+      <span class="map-no-vehicle-banner-title">Aún no hay vehículo en vivo</span>
+      <span class="map-no-vehicle-banner-text">La línea azul es el circuito previsto (Hotel → T1 → T2 → T4 → Hotel). Cuando un conductor active un transfer en Conductores, verás aquí su posición.</span>
+    </div>
     <button type="button" class="map-recenter-btn" id="mapRecenterBtn" hidden aria-label="Centrar en mi parada y el transfer" title="Centrar mapa">
       <svg class="map-recenter-icon" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path fill="currentColor" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
@@ -804,6 +808,8 @@
     var lastActiveVehicleEta = null;
     // Duraciones de cada tramo del circuito (segundos), rellenado cuando carga la ruta: [Hotel→T1, T1→T2, T2→T4, T4→Hotel]
     let routeLegDurationsSec = null;
+    /** Resultado Directions del circuito cerrado (para reaplicar si hace falta). */
+    let circuitDirectionsResult = null;
     /** Duración T4→hotel (petición directa). El último tramo del circuito cerrado a veces no coincide con la llegada real al Axor. */
     let routeT4ToHotelDriveSec = null;
     const PARADA_TERMINAL_MIN = 0;
@@ -934,7 +940,8 @@
         return;
       }
       if (!vehicleId) {
-        legendCompactEl.textContent = "Sin transfer activo";
+        legendCompactEl.textContent =
+          "Ruta en mapa · aún no hay vehículo asignado; se mostrará en cuanto un conductor active el transfer.";
         return;
       }
       const meta = vehicleMeta[vehicleId] || {};
@@ -1640,9 +1647,38 @@
       });
     }
 
+    function applyCircuitPolylineStyle(hasLiveVehicle) {
+      if (!directionsRenderer) return;
+      directionsRenderer.setOptions({
+        polylineOptions: {
+          strokeColor: "#388bfd",
+          strokeOpacity: hasLiveVehicle ? 0.4 : 0.82,
+          strokeWeight: hasLiveVehicle ? 4 : 6,
+          zIndex: 1
+        }
+      });
+      if (circuitDirectionsResult && map) {
+        directionsRenderer.setMap(map);
+        directionsRenderer.setDirections(circuitDirectionsResult);
+      }
+    }
+
+    function syncNoVehicleMapBanner() {
+      const el = document.getElementById("mapNoVehicleBanner");
+      if (!el || !map) return;
+      const show = !!circuitDirectionsResult && !activeVehicleIdOnMap;
+      el.hidden = !show;
+    }
+
     function initMap() {
       if (map) {
         google.maps.event.trigger(map, "resize");
+        if (circuitDirectionsResult && directionsRenderer) {
+          directionsRenderer.setMap(map);
+          directionsRenderer.setDirections(circuitDirectionsResult);
+          applyCircuitPolylineStyle(!!activeVehicleIdOnMap);
+          syncNoVehicleMapBanner();
+        }
         scheduleFitRouteViewport();
         resyncPassengerSession();
         forceRefreshPassengerEta();
@@ -1665,9 +1701,9 @@
         suppressMarkers: true,
         preserveViewport: true,
         polylineOptions: {
-          strokeColor: "#6a8fc7",
-          strokeOpacity: 0.35,
-          strokeWeight: 4,
+          strokeColor: "#388bfd",
+          strokeOpacity: 0.82,
+          strokeWeight: 6,
           zIndex: 1
         }
       });
@@ -1686,10 +1722,14 @@
 
       directionsService.route(request, function(result, status) {
         if (status === google.maps.DirectionsStatus.OK) {
+          circuitDirectionsResult = result;
+          directionsRenderer.setMap(map);
           directionsRenderer.setDirections(result);
           routeLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
           routeT4ToHotelDriveSec = null;
+          applyCircuitPolylineStyle(!!activeVehicleIdOnMap);
           scheduleFitRouteViewport(result);
+          syncNoVehicleMapBanner();
           refreshActiveVehicleEta(directionsService);
           refreshPickupRoute();
           updateLegendCompact();
@@ -1786,7 +1826,16 @@
           lastActiveVehicleEta = null;
           clearPickupRoute();
           stopTrackingFitLoop();
+          if (circuitDirectionsResult && directionsRenderer && map) {
+            directionsRenderer.setMap(map);
+            directionsRenderer.setDirections(circuitDirectionsResult);
+            applyCircuitPolylineStyle(false);
+            scheduleFitRouteViewport(circuitDirectionsResult);
+          }
+        } else {
+          applyCircuitPolylineStyle(true);
         }
+        syncNoVehicleMapBanner();
         setVehicleRowActive(activeVehicleIdOnMap);
         updateRecenterButtonState();
 
