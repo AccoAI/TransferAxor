@@ -374,6 +374,12 @@ body {
   cursor: default;
 }
 
+.client-signup-locate-btn.locating {
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.12);
+  color: var(--accent);
+}
+
 .client-signup-locate-status {
   font-size: 0.78rem;
   color: var(--muted);

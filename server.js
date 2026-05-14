@@ -30,7 +30,8 @@ const CONDUCTOR_GRACE_MS = Number(process.env.CONDUCTOR_GRACE_MS) || 45 * 60 * 1
 
 const CAMPEZO_DEFAULT = { lat: 40.447914, lng: -3.583004 };
 const WAITING_LOCATIONS = ["hotel", "t1", "t2", "t4"];
-const HOTEL_DESTINATIONS = new Set(["t1", "t2", "t4", "ifema", "simuladores"]);
+// Destinos válidos desde cualquier parada (el origen no puede coincidir con el destino; se valida en cliente)
+const VALID_DESTINATIONS = new Set(["hotel", "t1", "t2", "t4", "ifema", "simuladores"]);
 
 /** circuit: ruta circular programada. adhoc: IFEMA, simuladores, apoyo, etc. (editable por vehículo) */
 const vehicles = {
@@ -347,12 +348,10 @@ io.on("connection", (socket) => {
     const location = data && data.location;
     if (!WAITING_LOCATIONS.includes(location)) return;
     const people = clampSignupPeople(data && data.people);
-    let destination = null;
-    if (location === "hotel") {
-      const d = String((data && data.destination) || "").toLowerCase();
-      if (!HOTEL_DESTINATIONS.has(d)) return;
-      destination = d;
-    }
+    const d = String((data && data.destination) || "").toLowerCase();
+    if (!VALID_DESTINATIONS.has(d)) return;
+    if (d === location) return; // origen ≡ destino no tiene sentido
+    const destination = d;
     signups.set(socket.id, { location, people, destination });
     socket.emit("signup-status", { location, people, destination });
     broadcastState();

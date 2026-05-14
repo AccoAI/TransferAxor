@@ -57,7 +57,8 @@
     <div class="client-signup-dest" id="hotelDestRow" hidden>
       <div class="client-signup-dest-inner">
         <span class="client-signup-label client-signup-dest-label">Destino</span>
-        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino desde el hotel: T1, T2, T4, IFEMA o Simuladores">
+        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino: Hotel, T1, T2, T4, IFEMA o Simuladores">
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="hotel">Hotel</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t1">T1</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t2">T2</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t4">T4</button>
@@ -73,7 +74,7 @@
       <button type="button" class="client-signup-step" id="partyPlus" aria-label="Añadir persona">+</button>
     </div>
     <button type="button" class="client-signup-cancel" id="cancelSignupBtn" hidden>Cancelar</button>
-    <button type="button" class="client-schedule-open" id="scheduleToggleBtn" aria-haspopup="dialog" aria-controls="scheduleDialog">Programar</button>
+    <button type="button" class="client-schedule-open" id="scheduleToggleBtn" aria-haspopup="dialog" aria-controls="scheduleDialog">Programar hora</button>
     <span class="client-signup-status" id="signupStatus"></span>
     <span class="client-schedule-status" id="scheduleStatus"></span>
   </section>
@@ -173,6 +174,7 @@
       t4: "Terminal T4"
     };
     const DESTINATION_LABELS = {
+      hotel: "Hotel",
       t1: "T1",
       t2: "T2",
       t4: "T4",
@@ -228,11 +230,10 @@
     /** Devuelve el locationKey de la parada más cercana si está dentro del radio, o null. */
     function detectStopFromCoords(lat, lng) {
       const stops = [
-        { key: "hotel", lat: CAMPEZO.lat, lng: CAMPEZO.lng },
-        { key: "t1",    lat: TERMINALES[0].lat, lng: TERMINALES[0].lng },
-        { key: "t2",    lat: TERMINALES[1].lat, lng: TERMINALES[1].lng },
-        { key: "t4",    lat: TERMINALES[2].lat, lng: TERMINALES[2].lng },
-        { key: "t4",    lat: TERMINALES[3].lat, lng: TERMINALES[3].lng },
+        { key: "hotel", lat: CAMPEZO.lat,          lng: CAMPEZO.lng },
+        { key: "t1",    lat: TERMINALES[0].lat,    lng: TERMINALES[0].lng },
+        { key: "t2",    lat: TERMINALES[1].lat,    lng: TERMINALES[1].lng },
+        { key: "t4",    lat: TERMINALES[2].lat,    lng: TERMINALES[2].lng }
       ];
       var best = null;
       var bestDist = Infinity;
@@ -244,18 +245,19 @@
     }
 
     function handleLocateSuccess(pos) {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const stop = detectStopFromCoords(lat, lng);
-      if (stop) {
-        setLocateStatus("Ubicación detectada: " + (SIGNUP_LABELS[stop] || stop), false);
-        if (stop === "hotel") {
-          beginHotelSignupFlow();
+      try {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const stop = detectStopFromCoords(lat, lng);
+        if (stop) {
+          setLocateStatus("Ubicación detectada: " + (SIGNUP_LABELS[stop] || stop), false);
+          beginLocationSignupFlow(stop);
         } else {
-          submitSignupAtTerminal(stop);
+          setLocateStatus("No estás en ninguna parada conocida. Indica dónde esperas:", false);
+          showManualStops();
         }
-      } else {
-        setLocateStatus("No estás en ninguna parada conocida. Indica dónde esperas:", false);
+      } catch (e) {
+        setLocateStatus("Error procesando ubicación. Indica dónde esperas:", true);
         showManualStops();
       }
     }
@@ -275,14 +277,15 @@
         return;
       }
       setLocateStatus("Detectando…", false);
+      if (locateBtnEl) locateBtnEl.classList.add("locating");
       if (locateBtnEl) locateBtnEl.disabled = true;
       navigator.geolocation.getCurrentPosition(
         function(pos) {
-          if (locateBtnEl) locateBtnEl.disabled = false;
+          if (locateBtnEl) { locateBtnEl.disabled = false; locateBtnEl.classList.remove("locating"); }
           handleLocateSuccess(pos);
         },
         function(err) {
-          if (locateBtnEl) locateBtnEl.disabled = false;
+          if (locateBtnEl) { locateBtnEl.disabled = false; locateBtnEl.classList.remove("locating"); }
           handleLocateError(err);
         },
         { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
@@ -321,7 +324,7 @@
           JSON.stringify({
             location: location,
             people: people || 1,
-            destination: location === "hotel" ? (destination || null) : null
+            destination: destination || null
           })
         );
       } catch (e) {}
@@ -352,12 +355,9 @@
       var n = Number(d.people);
       if (!Number.isFinite(n)) n = 1;
       n = Math.max(1, Math.min(MAX_SIGNUP_PEOPLE, Math.round(n)));
-      const payload = { location: d.location, people: n };
-      if (d.location === "hotel") {
-        const dest = String(d.destination || "").toLowerCase();
-        if (!dest) return;
-        payload.destination = dest;
-      }
+      const dest = String(d.destination || "").toLowerCase();
+      if (!dest) return; // destino siempre requerido
+      const payload = { location: d.location, people: n, destination: dest };
       socket.emit("signup", payload);
     }
 
@@ -367,7 +367,7 @@
         return;
       }
       if (signedUp && selectedLocation) {
-        if (selectedLocation === "hotel" && !tripDestination) return;
+        if (!tripDestination) return;
         socket.emit("signup", buildSignupPayload());
         persistPassengerSignup(selectedLocation, partyCount, tripDestination);
       } else {
@@ -420,8 +420,10 @@
       });
     }
 
-    function syncHotelDestButtons() {
+    function syncDestButtons() {
       hotelDestStopEls.forEach(function(btn) {
+        // Ocultar el botón que coincide con la parada actual (no tiene sentido viajar a donde ya estás)
+        btn.hidden = btn.dataset.dest === selectedLocation;
         btn.classList.toggle("active", btn.dataset.dest === tripDestination);
         btn.disabled = false;
       });
@@ -429,9 +431,9 @@
 
     function syncHotelDestRow() {
       if (!hotelDestRowEl) return;
-      const show = (!signedUp && selectedLocation === "hotel") || (signedUp && selectedLocation === "hotel");
-      hotelDestRowEl.hidden = !show;
-      syncHotelDestButtons();
+      // Mostrar la tira de destino siempre que haya una parada seleccionada
+      hotelDestRowEl.hidden = !selectedLocation;
+      syncDestButtons();
     }
 
     function updateSignupStatus(location, people) {
@@ -440,58 +442,52 @@
         return;
       }
       const label = SIGNUP_LABELS[location] || location;
-      const destHint =
-        location === "hotel" && tripDestination
-          ? " → " + (DESTINATION_LABELS[tripDestination] || tripDestination)
-          : "";
+      const destHint = tripDestination
+        ? " → " + (DESTINATION_LABELS[tripDestination] || tripDestination)
+        : "";
       signupStatusEl.textContent = people > 1
         ? "Apuntado en " + label + destHint + " (" + people + " personas)"
         : "Apuntado en " + label + destHint;
     }
 
-    function submitSignupAtTerminal(location) {
-      if (!location || !TERMINAL_LOCATIONS[location]) return;
-      pendingSwitchToHotelAfterCancel = false;
-      if (signedUp && selectedLocation === location) return;
-      tripDestination = null;
-      setSelectedLocation(location);
-      syncHotelDestRow();
-      socket.emit("signup", { location: location, people: partyCount });
-    }
-
-    function beginHotelSignupFlow() {
+    function beginLocationSignupFlow(location) {
+      if (!location) return;
       if (signedUp) {
-        if (selectedLocation === "hotel") return;
-        pendingSwitchToHotelAfterCancel = true;
+        if (selectedLocation === location) return;
+        pendingSwitchToHotelAfterCancel = (location === "hotel");
         socket.emit("cancel-signup");
+        // Para terminales distintos a hotel, reapuntamos tras cancelar
+        if (location !== "hotel") {
+          setSelectedLocation(location);
+          tripDestination = null;
+          syncHotelDestRow();
+        }
         return;
       }
-      setSelectedLocation("hotel");
+      setSelectedLocation(location);
       tripDestination = null;
       syncHotelDestRow();
-      signupStatusEl.textContent = "Elige destino: T1, T2, T4, IFEMA o Simuladores";
+      const destNames = Object.entries(DESTINATION_LABELS)
+        .filter(function(e) { return e[0] !== location; })
+        .map(function(e) { return e[1]; })
+        .join(", ");
+      signupStatusEl.textContent = "Elige destino: " + destNames;
     }
 
-    function submitHotelSignupWithDestination(dest) {
-      if (!dest) return;
-      if (!signedUp) {
-        if (selectedLocation !== "hotel") return;
-        tripDestination = dest;
-        syncHotelDestButtons();
-        socket.emit("signup", { location: "hotel", destination: dest, people: partyCount });
-        return;
-      }
-      if (selectedLocation !== "hotel") return;
+    function submitSignupWithDestination(dest) {
+      if (!dest || !selectedLocation) return;
+      if (dest === selectedLocation) return; // origen = destino inválido
       tripDestination = dest;
-      syncHotelDestButtons();
-      socket.emit("signup", buildSignupPayload());
-      persistPassengerSignup("hotel", partyCount, tripDestination);
-      updateSignupStatus("hotel", partyCount);
+      syncDestButtons();
+      socket.emit("signup", { location: selectedLocation, destination: dest, people: partyCount });
+      if (signedUp) {
+        persistPassengerSignup(selectedLocation, partyCount, tripDestination);
+        updateSignupStatus(selectedLocation, partyCount);
+      }
     }
 
     function syncSignupPeople() {
-      if (!signedUp || !selectedLocation) return;
-      if (selectedLocation === "hotel" && !tripDestination) return;
+      if (!signedUp || !selectedLocation || !tripDestination) return;
       socket.emit("signup", buildSignupPayload());
       updateSignupStatus(selectedLocation, partyCount);
       persistPassengerSignup(selectedLocation, partyCount, tripDestination);
@@ -519,7 +515,7 @@
         setSelectedLocation(location);
         updateSignupStatus(location, people);
         followUserAndVehicle = true;
-        persistPassengerSignup(location, people, location === "hotel" ? tripDestination : null);
+        persistPassengerSignup(location, people, tripDestination);
       } else {
         setSelectedLocation(null);
         tripDestination = null;
@@ -548,15 +544,13 @@
 
     signupStopEls.forEach(function(btn) {
       btn.addEventListener("click", function() {
-        const loc = btn.dataset.location;
-        if (loc === "hotel") beginHotelSignupFlow();
-        else submitSignupAtTerminal(loc);
+        beginLocationSignupFlow(btn.dataset.location);
       });
     });
 
     hotelDestStopEls.forEach(function(btn) {
       btn.addEventListener("click", function() {
-        submitHotelSignupWithDestination(btn.dataset.dest);
+        submitSignupWithDestination(btn.dataset.dest);
       });
     });
 
@@ -573,11 +567,7 @@
         pendingSwitchToHotelAfterCancel = false;
         partyCount = people;
         updatePartyControls();
-        if (location === "hotel") {
-          tripDestination = destination ? String(destination).toLowerCase() : null;
-        } else {
-          tripDestination = null;
-        }
+        tripDestination = destination ? String(destination).toLowerCase() : null;
         setSignedUp(true, location, people);
       } else {
         tripDestination = null;
@@ -586,7 +576,7 @@
         setSignedUp(false, null, 0);
         updatePartyControls();
         if (openHotelPicker) {
-          beginHotelSignupFlow();
+          beginLocationSignupFlow("hotel");
         } else {
           if (locateBtnEl) {
             locateBtnEl.closest(".client-signup-locate").hidden = false;
