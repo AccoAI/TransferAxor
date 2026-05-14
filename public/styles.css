@@ -693,28 +693,51 @@ body {
   left: max(0.5rem, env(safe-area-inset-left));
   right: max(0.5rem, env(safe-area-inset-right));
   top: max(0.5rem, env(safe-area-inset-top));
-  max-width: 22rem;
-  padding: 0.55rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  width: calc(100% - 1rem - env(safe-area-inset-left) - env(safe-area-inset-right));
+  max-width: none;
+  padding: 0.45rem 0.65rem;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: rgba(26, 35, 50, 0.94);
   color: var(--muted);
   font-size: 0.78rem;
-  line-height: 1.38;
+  line-height: 1.35;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
   pointer-events: none;
 }
 
-.map-no-vehicle-banner-title {
-  display: block;
-  font-weight: 600;
-  color: var(--accent);
-  margin-bottom: 0.28rem;
-  font-size: 0.82rem;
+.map-no-vehicle-banner-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
 }
 
-.map-no-vehicle-banner-text {
-  display: block;
+.map-no-vehicle-banner-btn {
+  flex: 0 0 auto;
+  pointer-events: auto;
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent-dim);
+  background: rgba(56, 139, 253, 0.16);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.map-no-vehicle-banner-btn:hover {
+  background: rgba(56, 139, 253, 0.26);
+}
+
+.map-no-vehicle-banner-btn:active {
+  transform: scale(0.98);
 }
 
 .map-recenter-btn {

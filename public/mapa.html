@@ -122,9 +122,9 @@
 
   <div class="map-container">
     <div id="map"></div>
-    <div class="map-no-vehicle-banner" id="mapNoVehicleBanner" role="status" hidden>
-      <span class="map-no-vehicle-banner-title">Aún no hay vehículo en vivo</span>
-      <span class="map-no-vehicle-banner-text">La línea azul es el circuito previsto (Hotel → T1 → T2 → T4 → Hotel). Cuando un conductor active un transfer en Conductores, verás aquí su posición.</span>
+    <div class="map-no-vehicle-banner" id="mapNoVehicleBanner" role="region" aria-label="Estado del transfer" hidden>
+      <span class="map-no-vehicle-banner-msg" id="mapNoVehicleBannerMsg">Aún no hay Transfer Axor en vivo</span>
+      <button type="button" class="map-no-vehicle-banner-btn" id="mapRequestTransferViewBtn">Solicitar visualización Transfer</button>
     </div>
     <button type="button" class="map-recenter-btn" id="mapRecenterBtn" hidden aria-label="Centrar en mi parada y el transfer" title="Centrar mapa">
       <svg class="map-recenter-icon" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -305,7 +305,7 @@
     function getPickupRouteCacheKey() {
       if (!signedUp || !selectedLocation) return "";
       if (selectedLocation === "hotel") return "hotel|" + (tripDestination || "");
-      return selectedLocation;
+      return selectedLocation + "|" + (tripDestination || "");
     }
 
     function getEffectiveTripDestinationKey() {
@@ -487,6 +487,7 @@
       if (signedUp) {
         persistPassengerSignup(selectedLocation, partyCount, tripDestination);
         updateSignupStatus(selectedLocation, partyCount);
+        refreshPickupRoute();
       }
     }
 
@@ -786,6 +787,22 @@
       });
     }
 
+    const mapRequestTransferViewBtnEl = document.getElementById("mapRequestTransferViewBtn");
+    if (mapRequestTransferViewBtnEl) {
+      mapRequestTransferViewBtnEl.addEventListener("click", function() {
+        if (!directionsServiceInstance) return;
+        const o = getPassengerSignupOriginLatLng();
+        const d = getPassengerTripEndLatLng();
+        if (o && d && signedUp && tripDestination) {
+          updatePassengerDirectPreviewRoute(directionsServiceInstance, true);
+        } else if (hotelDestRowEl) {
+          hotelDestRowEl.hidden = false;
+          hotelDestRowEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          if (hotelDestStopEls && hotelDestStopEls[0]) hotelDestStopEls[0].focus();
+        }
+      });
+    }
+
     function formatMinutesDelta(seconds) {
       if (!Number.isFinite(seconds)) return "—";
       if (seconds <= 0) return "ahora";
@@ -802,6 +819,9 @@
     const PICKUP_ROUTE_THROTTLE_KM = 0.25;
     const vehicleMarkers = {};
     const vehicleMeta = {};
+    /** Ruta oscura pasajero origen→destino (sin conductor en vivo). */
+    var passengerDirectPreviewActive = false;
+    var lastPassengerPreviewSnap = null;
     const stopPoints = [];
     var lastVehiclesLive = {};
     var activeVehicleIdOnMap = null;
@@ -1080,9 +1100,28 @@
       return getStopLatLng(stopIndex);
     }
 
+    /** Punto de espera del pasajero (origen de la ruta previa en mapa). */
+    function getPassengerSignupOriginLatLng() {
+      if (!selectedLocation) return null;
+      if (selectedLocation === "hotel") return { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
+      const idx = locationKeyToStopIndex(selectedLocation);
+      if (idx === null || idx === 3) return null;
+      return { lat: TERMINALES[idx].lat, lng: TERMINALES[idx].lng };
+    }
+
+    /** Destino del viaje elegido (tripDestination). */
+    function getPassengerTripEndLatLng() {
+      if (!tripDestination) return null;
+      const key = String(tripDestination).toLowerCase();
+      if (key === "ifema") return { lat: IFEMA.lat, lng: IFEMA.lng };
+      if (key === "simuladores") return { lat: SIMULADORES.lat, lng: SIMULADORES.lng };
+      const stopIndex = locationKeyToStopIndex(key);
+      if (stopIndex === null) return null;
+      return getStopLatLng(stopIndex);
+    }
+
     function hasSignupDestinationReady() {
-      if (!signedUp || !selectedLocation) return false;
-      if (selectedLocation === "hotel") return !!tripDestination;
+      if (!signedUp || !selectedLocation || !tripDestination) return false;
       return true;
     }
 
@@ -1218,9 +1257,71 @@
           delete m.pickupRouteAt;
         }
       }
+      passengerDirectPreviewActive = false;
+      lastPassengerPreviewSnap = null;
       if (pickupDirectionsRenderer) pickupDirectionsRenderer.setMap(null);
       lastPickupRouteOrigin = null;
       lastPickupDirectionsResult = null;
+      applyCircuitPolylineStyle();
+    }
+
+    function updatePassengerDirectPreviewRoute(directionsService, force) {
+      if (!map || !directionsService) return;
+      if (activeVehicleIdOnMap && lastActiveVehicleEta) return;
+      if (!signedUp || !selectedLocation || !tripDestination) return;
+
+      const o = getPassengerSignupOriginLatLng();
+      const d = getPassengerTripEndLatLng();
+      if (!o || !d) return;
+      if (distanceKm(o.lat, o.lng, d.lat, d.lng) < 0.03) {
+        clearPickupRoute();
+        return;
+      }
+
+      const snap = String(selectedLocation) + "|" + String(tripDestination);
+      if (!force && passengerDirectPreviewActive && lastPassengerPreviewSnap === snap && lastPickupDirectionsResult) {
+        return;
+      }
+      lastPassengerPreviewSnap = snap;
+
+      directionsService.route({
+        origin: o,
+        destination: d,
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      }, function(result, status) {
+        if (activeVehicleIdOnMap && lastActiveVehicleEta) return;
+        if (!signedUp || !selectedLocation || !tripDestination) return;
+        if (lastPassengerPreviewSnap !== snap) return;
+        if (status !== google.maps.DirectionsStatus.OK) {
+          passengerDirectPreviewActive = false;
+          if (pickupDirectionsRenderer) pickupDirectionsRenderer.setMap(null);
+          lastPickupDirectionsResult = null;
+          applyCircuitPolylineStyle();
+          return;
+        }
+        passengerDirectPreviewActive = true;
+        applyCircuitPolylineStyle();
+        if (!pickupDirectionsRenderer) {
+          pickupDirectionsRenderer = new google.maps.DirectionsRenderer({
+            map: map,
+            suppressMarkers: true,
+            preserveViewport: true,
+            polylineOptions: {
+              strokeColor: "#0b3d91",
+              strokeOpacity: 0.95,
+              strokeWeight: 7,
+              zIndex: 3
+            }
+          });
+        } else {
+          pickupDirectionsRenderer.setMap(map);
+        }
+        pickupDirectionsRenderer.setDirections(result);
+        lastPickupDirectionsResult = result;
+        lastPickupRouteOrigin = null;
+        scheduleFitRouteViewport(result);
+      });
     }
 
     function extendBoundsFromDirectionsResult(bounds, directionsResult) {
@@ -1238,6 +1339,8 @@
     }
 
     function updatePickupRoute(lat, lng, directionsService) {
+      passengerDirectPreviewActive = false;
+      applyCircuitPolylineStyle();
       const destination = getSignupDestinationPosition();
       if (!destination || !signedUp || !directionsService || !map) {
         clearPickupRoute();
@@ -1334,15 +1437,23 @@
     }
 
     function refreshPickupRoute() {
-      if (!lastActiveVehicleEta || !directionsServiceInstance) {
+      if (!directionsServiceInstance) {
         clearPickupRoute();
         return;
       }
-      updatePickupRoute(
-        lastActiveVehicleEta.lat,
-        lastActiveVehicleEta.lng,
-        directionsServiceInstance
-      );
+      if (activeVehicleIdOnMap && lastActiveVehicleEta) {
+        updatePickupRoute(
+          lastActiveVehicleEta.lat,
+          lastActiveVehicleEta.lng,
+          directionsServiceInstance
+        );
+        return;
+      }
+      if (signedUp && selectedLocation && tripDestination) {
+        updatePassengerDirectPreviewRoute(directionsServiceInstance, false);
+        return;
+      }
+      clearPickupRoute();
     }
 
     // Puntos finales de cada tramo: leg 0→T1, 1→T2, 2→T4, 3→Hotel
@@ -1647,13 +1758,26 @@
       });
     }
 
-    function applyCircuitPolylineStyle(hasLiveVehicle) {
+    function applyCircuitPolylineStyle() {
       if (!directionsRenderer) return;
+      const hasV = !!(activeVehicleIdOnMap && lastActiveVehicleEta);
+      var strokeOpacity;
+      var strokeWeight;
+      if (hasV) {
+        strokeOpacity = 0.4;
+        strokeWeight = 4;
+      } else if (passengerDirectPreviewActive) {
+        strokeOpacity = 0.16;
+        strokeWeight = 3;
+      } else {
+        strokeOpacity = 0.34;
+        strokeWeight = 4;
+      }
       directionsRenderer.setOptions({
         polylineOptions: {
-          strokeColor: "#388bfd",
-          strokeOpacity: hasLiveVehicle ? 0.4 : 0.82,
-          strokeWeight: hasLiveVehicle ? 4 : 6,
+          strokeColor: "#6a9fe8",
+          strokeOpacity: strokeOpacity,
+          strokeWeight: strokeWeight,
           zIndex: 1
         }
       });
@@ -1676,7 +1800,7 @@
         if (circuitDirectionsResult && directionsRenderer) {
           directionsRenderer.setMap(map);
           directionsRenderer.setDirections(circuitDirectionsResult);
-          applyCircuitPolylineStyle(!!activeVehicleIdOnMap);
+          applyCircuitPolylineStyle();
           syncNoVehicleMapBanner();
         }
         scheduleFitRouteViewport();
@@ -1727,7 +1851,7 @@
           directionsRenderer.setDirections(result);
           routeLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
           routeT4ToHotelDriveSec = null;
-          applyCircuitPolylineStyle(!!activeVehicleIdOnMap);
+          applyCircuitPolylineStyle();
           scheduleFitRouteViewport(result);
           syncNoVehicleMapBanner();
           refreshActiveVehicleEta(directionsService);
@@ -1824,16 +1948,16 @@
         activeVehicleIdOnMap = activeOne ? activeOne.id : null;
         if (!activeOne) {
           lastActiveVehicleEta = null;
-          clearPickupRoute();
+          refreshPickupRoute();
           stopTrackingFitLoop();
           if (circuitDirectionsResult && directionsRenderer && map) {
             directionsRenderer.setMap(map);
             directionsRenderer.setDirections(circuitDirectionsResult);
-            applyCircuitPolylineStyle(false);
+            applyCircuitPolylineStyle();
             scheduleFitRouteViewport(circuitDirectionsResult);
           }
         } else {
-          applyCircuitPolylineStyle(true);
+          applyCircuitPolylineStyle();
         }
         syncNoVehicleMapBanner();
         setVehicleRowActive(activeVehicleIdOnMap);
