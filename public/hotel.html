@@ -2,15 +2,25 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="screen-orientation" content="portrait">
   <title>Transfer Axor - Pantalla hotel</title>
   <link rel="stylesheet" href="styles.css">
   <script src="/config.js"></script>
 </head>
-<body class="hotel-page map-page">
+<body class="hotel-page map-page map-page-vertical">
+  <script>
+    (function() {
+      try {
+        if (screen.orientation && screen.orientation.lock) {
+          screen.orientation.lock("portrait").catch(function() {});
+        }
+      } catch (e) {}
+    })();
+  </script>
   <header class="map-header hotel-header">
     <img src="img/logo-axor.png" alt="Axor Hoteles" class="header-logo">
-    <h1>Transfer — Campezo 4 ↔ Barajas T1–T4</h1>
+    <h1>Transfer — Barajas T1–T4 · IFEMA</h1>
   </header>
 
   <div class="map-container">
@@ -18,7 +28,11 @@
     <div id="mapStatus" class="map-status-banner" hidden></div>
     <div class="legend display-board hotel-board" id="legend">
       <div class="legend-section">
-        <div class="legend-eta-title">Transfers en ruta — circuito Hotel → T1 → T2 → T4 → Hotel y Hotel → IFEMA (horario Madrid)</div>
+        <div class="hotel-circuits-intro">
+          <div class="hotel-circuit-line"><span class="hotel-circuit-swatch barajas"></span> Barajas: Hotel → T1 → T2 → T4 → Hotel</div>
+          <div class="hotel-circuit-line"><span class="hotel-circuit-swatch ifema"></span> IFEMA: Hotel → IFEMA → Hotel</div>
+        </div>
+        <div class="legend-eta-title">Vehículos en ruta (horario Madrid)</div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito1"><span class="legend-dot vito1"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito NJC</span><span class="legend-pax" id="pax1"></span><span class="legend-eta" id="eta1"></span></div><div class="legend-vehicle-status" id="status1"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito2"><span class="legend-dot vito2"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito LZD</span><span class="legend-pax" id="pax2"></span><span class="legend-eta" id="eta2"></span></div><div class="legend-vehicle-status" id="status2"></div></div></div>
         <div class="legend-item legend-vehicle-row" id="vehicle-row-vito3"><span class="legend-dot vito3"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Vito MMR</span><span class="legend-pax" id="pax3"></span><span class="legend-eta" id="eta3"></span></div><div class="legend-vehicle-status" id="status3"></div></div></div>
@@ -38,8 +52,11 @@
       { key: "t4", lat: 40.49125, lng: -3.59314, name: "Terminal T4 Barajas", link: "https://maps.app.goo.gl/MaAdQak6kArn1Xod6" }
     ];
     const IFEMA = { lat: 40.4643, lng: -3.6167, name: "IFEMA Madrid" };
-    /** Distancia máx. (km) a la polilínea del circuito o Hotel→IFEMA para mostrar el transfer en TV. */
+    /** Distancia máx. (km) a la polilínea de un circuito para mostrar el transfer en TV. */
     const HOTEL_ROUTE_CORRIDOR_KM = 0.9;
+    const CIRCUIT_BARAJAS = "barajas";
+    const CIRCUIT_IFEMA = "ifema";
+    const IFEMA_ROUTE_STOP_NAMES = ["IFEMA", "Hotel"];
     /** Cerca de una parada fija (hotel, T1–T4, IFEMA) cuenta como en ruta. */
     const HOTEL_STOP_NEAR_KM = 0.35;
 
@@ -57,6 +74,7 @@
     let ifemaDirectionsRenderer = null;
     let circuitPathPoints = [];
     let ifemaPathPoints = [];
+    let ifemaLegDurationsSec = null;
     const vehicleMarkers = {};
     const vehicleMeta = {};
     const stopPoints = [];
@@ -161,32 +179,59 @@
       return false;
     }
 
-    /** Transfer en circuito Barajas o en tramo Hotel→IFEMA (servicios extraordinarios). */
+    function pathCorridorDistanceKm(lat, lng, pathPoints) {
+      if (!pathPoints || pathPoints.length < 2) return Infinity;
+      return minDistanceKmToPath(lat, lng, pathPoints);
+    }
+
+    /** En uno de los dos circuitos: Barajas (T1–T4) o IFEMA (ida y vuelta). */
     function isVehicleOnServiceRoute(lat, lng) {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
       if (isNearServiceStop(lat, lng)) return true;
-      if (circuitPathPoints.length >= 2 && minDistanceKmToPath(lat, lng, circuitPathPoints) <= HOTEL_ROUTE_CORRIDOR_KM) {
-        return true;
-      }
-      if (ifemaPathPoints.length >= 2 && minDistanceKmToPath(lat, lng, ifemaPathPoints) <= HOTEL_ROUTE_CORRIDOR_KM) {
-        return true;
-      }
+      if (pathCorridorDistanceKm(lat, lng, circuitPathPoints) <= HOTEL_ROUTE_CORRIDOR_KM) return true;
+      if (pathCorridorDistanceKm(lat, lng, ifemaPathPoints) <= HOTEL_ROUTE_CORRIDOR_KM) return true;
       return false;
     }
 
-    function fetchRouteHotelToIfema(directionsService, onDone) {
+    /** Circuito activo según posición GPS (en hotel se usa modo conductor). */
+    function detectVehicleCircuitKind(vehicleId, lat, lng) {
+      const dBar = pathCorridorDistanceKm(lat, lng, circuitPathPoints);
+      const dIfe = pathCorridorDistanceKm(lat, lng, ifemaPathPoints);
+      const onBar = dBar <= HOTEL_ROUTE_CORRIDOR_KM;
+      const onIfe = dIfe <= HOTEL_ROUTE_CORRIDOR_KM;
+      if (!onBar && !onIfe) return null;
+      if (onBar && onIfe) {
+        if (distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng) <= HOTEL_STOP_NEAR_KM) {
+          const svc = getVehicleService(vehicleId);
+          return svc.serviceMode === "adhoc" ? CIRCUIT_IFEMA : CIRCUIT_BARAJAS;
+        }
+        return dIfe < dBar ? CIRCUIT_IFEMA : CIRCUIT_BARAJAS;
+      }
+      if (onIfe) return CIRCUIT_IFEMA;
+      return CIRCUIT_BARAJAS;
+    }
+
+    function circuitKindLabel(kind) {
+      if (kind === CIRCUIT_IFEMA) return "Circuito IFEMA · Hotel → IFEMA → Hotel";
+      return "Circuito Barajas · Hotel → T1 → T2 → T4 → Hotel";
+    }
+
+    function fetchRouteHotelIfemaCircuit(directionsService, onDone) {
       if (!directionsService) {
         if (typeof onDone === "function") onDone();
         return;
       }
       directionsService.route({
         origin: { lat: CAMPEZO.lat, lng: CAMPEZO.lng },
-        destination: { lat: IFEMA.lat, lng: IFEMA.lng },
+        destination: { lat: CAMPEZO.lat, lng: CAMPEZO.lng },
+        waypoints: [{ location: { lat: IFEMA.lat, lng: IFEMA.lng }, stopover: true }],
+        optimizeWaypoints: false,
         travelMode: google.maps.TravelMode.DRIVING,
         region: "es"
       }, function(result, status) {
-        if (status === google.maps.DirectionsStatus.OK) {
+        if (status === google.maps.DirectionsStatus.OK && result.routes[0]) {
           ifemaPathPoints = extractPathFromDirectionsResult(result);
+          ifemaLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
           if (map && ifemaDirectionsRenderer) {
             ifemaDirectionsRenderer.setDirections(result);
           }
@@ -388,6 +433,87 @@
       });
     }
 
+    function getIfemaCurrentLegIndex(lat, lng) {
+      const dHotel = distanceKm(lat, lng, CAMPEZO.lat, CAMPEZO.lng);
+      const dIfema = distanceKm(lat, lng, IFEMA.lat, IFEMA.lng);
+      if (dHotel < HOTEL_STOP_NEAR_KM) return -1;
+      if (dIfema < HOTEL_STOP_NEAR_KM) return 1;
+      return dIfema <= dHotel ? 0 : 1;
+    }
+
+    function getIfemaEndOfLeg(legIndex) {
+      if (legIndex === 0) return { lat: IFEMA.lat, lng: IFEMA.lng };
+      return { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
+    }
+
+    function computeIfemaStopEtas(currentLeg, remainingOnLegSec) {
+      if (!ifemaLegDurationsSec || ifemaLegDurationsSec.length !== 2) return null;
+      const etas = [];
+      const start = currentLeg < 0 ? 0 : currentLeg;
+      for (let s = start; s < 2; s++) {
+        let sec = 0;
+        if (currentLeg < 0) {
+          for (let i = 0; i <= s; i++) sec += ifemaLegDurationsSec[i];
+        } else {
+          sec = remainingOnLegSec;
+          for (let i = currentLeg + 1; i <= s; i++) sec += ifemaLegDurationsSec[i];
+        }
+        etas.push({
+          name: IFEMA_ROUTE_STOP_NAMES[s],
+          sec: sec,
+          text: formatArrivalTimeMadrid(sec)
+        });
+      }
+      return etas;
+    }
+
+    function applyIfemaRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, detailPrefix) {
+      const stopEtas = computeIfemaStopEtas(currentLeg, remainingOnLegSec);
+      const prefix = detailPrefix || circuitKindLabel(CIRCUIT_IFEMA);
+      const display = formatEtasDisplay(stopEtas, null, prefix);
+      setEtaForVehicle(vehicleId, label, {
+        summary: display.summary,
+        detail: display.detail,
+        stopEtas: stopEtas
+      });
+    }
+
+    function updateEtaIfemaCircuit(vehicleId, lat, lng, label, directionsService) {
+      const currentLeg = getIfemaCurrentLegIndex(lat, lng);
+      if (currentLeg < 0) {
+        if (!ifemaLegDurationsSec || ifemaLegDurationsSec.length !== 2) {
+          setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: circuitKindLabel(CIRCUIT_IFEMA) });
+          return;
+        }
+        applyIfemaRouteEtas(vehicleId, label, -1, 0, circuitKindLabel(CIRCUIT_IFEMA));
+        return;
+      }
+      if (!ifemaLegDurationsSec || ifemaLegDurationsSec.length !== 2) {
+        setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: circuitKindLabel(CIRCUIT_IFEMA) });
+        return;
+      }
+      const last = lastEtaOrigin[vehicleId];
+      if (last && distanceKm(lat, lng, last.lat, last.lng) < ETA_THROTTLE_KM) return;
+      lastEtaOrigin[vehicleId] = { lat: lat, lng: lng };
+      setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: circuitKindLabel(CIRCUIT_IFEMA) });
+
+      const endPoint = getIfemaEndOfLeg(currentLeg);
+      directionsService.route({
+        origin: { lat: lat, lng: lng },
+        destination: endPoint,
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      }, function(result, status) {
+        if (status !== google.maps.DirectionsStatus.OK) {
+          if (vehicleId === activeVehicleIdOnMap) setEtaForVehicle(vehicleId, label, { summary: "—", detail: "" });
+          return;
+        }
+        if (vehicleId !== activeVehicleIdOnMap) return;
+        const remainingOnLegSec = result.routes[0].legs[0].duration.value;
+        applyIfemaRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, circuitKindLabel(CIRCUIT_IFEMA));
+      });
+    }
+
     function refreshActiveVehicleEta(directionsService) {
       if (!lastActiveVehicleEta || !directionsService) return;
       updateEtaFromGoogle(
@@ -400,23 +526,25 @@
     }
 
     function updateEtaFromGoogle(vehicleId, lat, lng, label, directionsService) {
+      const circuitKind = detectVehicleCircuitKind(vehicleId, lat, lng);
+      if (circuitKind === CIRCUIT_IFEMA) {
+        updateEtaIfemaCircuit(vehicleId, lat, lng, label, directionsService);
+        return;
+      }
+
+      const barajasPrefix = circuitKindLabel(CIRCUIT_BARAJAS);
       const currentLeg = getCurrentLegIndex(lat, lng);
       if (currentLeg < 0) {
         if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
-          setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
+          setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: barajasPrefix });
           return;
         }
         const svc = getVehicleService(vehicleId);
         if (svc.serviceMode === "adhoc") {
-          applyRouteEtas(
-            vehicleId,
-            label,
-            -1,
-            0,
-            0,
-            null,
-            "Servicio extraordinario (IFEMA, simuladores, apoyo…). En hotel sin cadencia fija de circuito; tiempos por Maps."
-          );
+          setEtaForVehicle(vehicleId, label, {
+            summary: "—",
+            detail: "Fuera de circuito Barajas e IFEMA (simuladores, taller, apoyo…)"
+          });
           return;
         }
         const sched = svc.circuitSchedule === "B" ? "B" : "A";
@@ -428,12 +556,13 @@
           -1,
           0,
           getSecondsUntilHotelDepartureCircuit(sched),
-          depLine
+          depLine,
+          barajasPrefix
         );
         return;
       }
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
-        setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: "" });
+        setEtaForVehicle(vehicleId, label, { summary: "Calculando…", detail: barajasPrefix });
         return;
       }
       const last = lastEtaOrigin[vehicleId];
@@ -454,7 +583,7 @@
         }
         if (vehicleId !== activeVehicleIdOnMap) return;
         const remainingOnLegSec = result.routes[0].legs[0].duration.value;
-        applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, 0, null);
+        applyRouteEtas(vehicleId, label, currentLeg, remainingOnLegSec, 0, null, barajasPrefix);
       });
     }
 
@@ -507,6 +636,13 @@
     let routeBounds = null;
     let routeFitTimer = null;
 
+    function extendBoundsWithPath(bounds, pathPoints) {
+      if (!pathPoints || !pathPoints.length) return;
+      pathPoints.forEach(function(p) {
+        bounds.extend(p);
+      });
+    }
+
     function buildRouteBounds(directionsResult) {
       const bounds = new google.maps.LatLngBounds();
       bounds.extend(CAMPEZO);
@@ -526,18 +662,14 @@
           bounds.extend(leg.end_location);
         });
       }
+      extendBoundsWithPath(bounds, circuitPathPoints);
+      extendBoundsWithPath(bounds, ifemaPathPoints);
       return bounds;
     }
 
     function getMapViewportPadding() {
-      const legend = document.getElementById("legend");
-      const edge = 8;
-      return {
-        top: edge,
-        right: edge,
-        bottom: (legend ? legend.offsetHeight : 180) + edge,
-        left: edge
-      };
+      const edge = 14;
+      return { top: edge, right: edge, bottom: edge, left: edge };
     }
 
     function fitRouteViewport(directionsResult) {
@@ -616,8 +748,10 @@
           routeLegDurationsSec = result.routes[0].legs.map(function(leg) { return leg.duration.value; });
           routeT4ToHotelDriveSec = null;
           scheduleFitRouteViewport(result);
-          fetchRouteHotelToIfema(directionsService, function() {
+          fetchRouteHotelIfemaCircuit(directionsService, function() {
+            routeBounds = buildRouteBounds(result);
             scheduleFitRouteViewport(result);
+            refreshActiveVehicleEta(directionsService);
           });
           refreshActiveVehicleEta(directionsService);
           fetchRouteT4ToHotelDrive(directionsService, function() {
