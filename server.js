@@ -10,6 +10,7 @@ const path = require("path");
 const {
   normalizeFlightCode,
   lookupFlightForMadrid,
+  legToWaitingLocation,
   isFlightLookupConfigured,
 } = require("./lib/flightLookup");
 
@@ -393,14 +394,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("schedule-trip", async (data) => {
-    const location = data && data.location;
-    if (!WAITING_LOCATIONS.includes(location)) {
-      socket.emit("trip-schedule-status", { active: false, error: "invalid-location" });
-      return;
-    }
-    const people = clampSignupPeople(data && data.people);
     const mode = data && data.mode === "flight" ? "flight" : "datetime";
-    const trip = { location, people, mode, active: true };
+    let location = data && data.location;
+    const people =
+      mode === "flight" ? 1 : clampSignupPeople(data && data.people);
 
     if (mode === "flight") {
       const flightCode = normalizeFlightCode(data && data.flightCode);
@@ -412,9 +409,10 @@ io.on("connection", (socket) => {
         socket.emit("trip-schedule-status", { active: false, error: "flight-lookup-unavailable" });
         return;
       }
+      const hintLocation = WAITING_LOCATIONS.includes(location) ? location : "";
       let lookup;
       try {
-        lookup = await lookupFlightForMadrid(flightCode, { location });
+        lookup = await lookupFlightForMadrid(flightCode, { location: hintLocation });
       } catch (err) {
         console.error("schedule-trip flight:", err.message || err);
         socket.emit("trip-schedule-status", { active: false, error: "flight-lookup-failed" });
@@ -427,17 +425,44 @@ io.on("connection", (socket) => {
         });
         return;
       }
-      trip.flightCode = flightCode;
-      trip.flightDate = lookup.leg.date;
-      trip.flightTime = lookup.leg.time;
-      trip.flightLeg = lookup.leg.direction;
-      trip.flightTerminal = lookup.leg.terminal || null;
-      trip.flightOtherAirport = lookup.leg.otherIata || null;
-      trip.flightOtherAirportName = lookup.leg.otherName || null;
-      trip.flightStatus = lookup.leg.status || null;
-      trip.departureDate = lookup.leg.date;
-      trip.departureTime = lookup.leg.time;
-    } else {
+      location =
+        lookup.suggestedLocation ||
+        legToWaitingLocation(lookup.leg) ||
+        (WAITING_LOCATIONS.includes(location) ? location : null);
+      if (!WAITING_LOCATIONS.includes(location)) {
+        socket.emit("trip-schedule-status", { active: false, error: "flight-terminal-unknown" });
+        return;
+      }
+      const trip = {
+        location: location,
+        people: 1,
+        mode: "flight",
+        active: true,
+        flightCode: flightCode,
+        flightDate: lookup.leg.date,
+        flightTime: lookup.leg.time,
+        flightLeg: lookup.leg.direction,
+        flightTerminal: lookup.leg.terminal || null,
+        flightTerminalLabel: lookup.leg.terminalLabel || null,
+        flightOtherAirport: lookup.leg.otherIata || null,
+        flightOtherAirportName: lookup.leg.otherName || null,
+        flightStatus: lookup.leg.status || null,
+        departureDate: lookup.leg.date,
+        departureTime: lookup.leg.time,
+      };
+      scheduledTrips.set(socket.id, trip);
+      socket.emit("trip-schedule-status", trip);
+      emitScheduledTripsToConductors();
+      return;
+    }
+
+    if (!WAITING_LOCATIONS.includes(location)) {
+      socket.emit("trip-schedule-status", { active: false, error: "invalid-location" });
+      return;
+    }
+    const trip = { location, people, mode, active: true };
+
+    if (mode === "datetime") {
       const departureDate = parseDepartureDate(data && data.departureDate);
       const departureTime = parseDepartureTime(data && data.departureTime);
       if (!departureDate || !departureTime) {

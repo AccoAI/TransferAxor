@@ -91,7 +91,7 @@
         <button type="button" class="client-schedule-mode active" data-mode="datetime">Día y hora</button>
         <button type="button" class="client-schedule-mode" data-mode="flight">Código de vuelo</button>
       </div>
-      <label class="client-schedule-label" for="scheduleLocation">Salida desde</label>
+      <label class="client-schedule-label" id="scheduleLocationLabel" for="scheduleLocation">Salida desde</label>
       <select id="scheduleLocation" class="client-schedule-select">
         <option value="">Elige parada</option>
         <option value="hotel">Hotel Campezo 4</option>
@@ -114,8 +114,10 @@
         </div>
         <p class="client-schedule-flight-preview" id="scheduleFlightPreview" hidden></p>
       </div>
-      <label class="client-schedule-label" for="schedulePeople">Personas</label>
-      <input type="number" id="schedulePeople" class="client-schedule-input" min="1" max="15" step="1" inputmode="numeric" value="1">
+      <div id="schedulePeopleFields">
+        <label class="client-schedule-label" for="schedulePeople">Personas</label>
+        <input type="number" id="schedulePeople" class="client-schedule-input" min="1" max="15" step="1" inputmode="numeric" value="1">
+      </div>
       <p class="client-schedule-dialog-status" id="scheduleDialogStatus"></p>
       <div class="client-schedule-actions">
         <button type="button" class="client-schedule-save" id="scheduleSaveBtn">Guardar viaje</button>
@@ -607,6 +609,8 @@
     const scheduleFlightLookupBtnEl = document.getElementById("scheduleFlightLookupBtn");
     const scheduleFlightPreviewEl = document.getElementById("scheduleFlightPreview");
     const schedulePeopleEl = document.getElementById("schedulePeople");
+    const scheduleLocationLabelEl = document.getElementById("scheduleLocationLabel");
+    const schedulePeopleFieldsEl = document.getElementById("schedulePeopleFields");
     const scheduleDatetimeFieldsEl = document.getElementById("scheduleDatetimeFields");
     const scheduleFlightFieldsEl = document.getElementById("scheduleFlightFields");
     const scheduleSaveBtnEl = document.getElementById("scheduleSaveBtn");
@@ -616,6 +620,7 @@
     let scheduleMode = "datetime";
     let tripScheduled = false;
     let lastFlightLookup = null;
+    let scheduleFlightResolvedLocation = null;
     let flightLookupTimer = null;
 
     function madridTodayInputValue() {
@@ -641,6 +646,7 @@
 
     function clearFlightPreview() {
       lastFlightLookup = null;
+      scheduleFlightResolvedLocation = null;
       if (scheduleFlightPreviewEl) {
         scheduleFlightPreviewEl.hidden = true;
         scheduleFlightPreviewEl.textContent = "";
@@ -648,10 +654,11 @@
       }
     }
 
-    function formatFlightLegSummary(leg, flightCode) {
+    function formatFlightLegSummary(leg, flightCode, suggestedLabel) {
       if (!leg) return "";
       const when = formatScheduleDateLabel(leg.date) + " " + leg.time;
-      const term = leg.terminal ? " · terminal " + leg.terminal : "";
+      const termLabel = leg.terminalLabel || (leg.terminal ? "T" + String(leg.terminal).replace(/\D/g, "") : "");
+      const term = termLabel ? " · " + termLabel : "";
       const other = leg.otherIata
         ? (leg.direction === "arrival" ? " desde " : " hacia ") +
           (leg.otherName || leg.otherIata) +
@@ -659,24 +666,45 @@
           leg.otherIata +
           ")"
         : "";
+      const pickup =
+        suggestedLabel && leg.direction === "arrival"
+          ? " · recogida en " + suggestedLabel
+          : suggestedLabel && leg.direction === "departure"
+            ? " · salida desde hotel"
+            : "";
       if (leg.direction === "arrival") {
         return (
           flightCode +
-          " · llegada a Madrid (Barajas)" +
+          " · llegada a Madrid-Barajas" +
           term +
           " · " +
           when +
-          other
+          other +
+          pickup
         );
       }
       return (
         flightCode +
-        " · salida desde Madrid (Barajas)" +
+        " · salida desde Madrid-Barajas" +
         term +
         " · " +
         when +
-        other
+        other +
+        pickup
       );
+    }
+
+    function applyFlightLookupResult(data) {
+      if (!data || !data.ok || !data.leg) {
+        clearFlightPreview();
+        return;
+      }
+      lastFlightLookup = data;
+      scheduleFlightResolvedLocation = data.suggestedLocation || null;
+      if (scheduleLocationEl && scheduleFlightResolvedLocation) {
+        scheduleLocationEl.value = scheduleFlightResolvedLocation;
+      }
+      renderFlightPreview(data, null);
     }
 
     function renderFlightPreview(data, errorText) {
@@ -691,12 +719,15 @@
         clearFlightPreview();
         return;
       }
-      lastFlightLookup = data;
       scheduleFlightPreviewEl.hidden = false;
       scheduleFlightPreviewEl.className = "client-schedule-flight-preview is-ok";
-      let text = formatFlightLegSummary(data.leg, data.flightCode);
+      let text = formatFlightLegSummary(
+        data.leg,
+        data.flightCode,
+        data.suggestedLocationLabel
+      );
       if (data.legs && data.legs.length > 1) {
-        text += " (hay " + data.legs.length + " horarios en los próximos días; se usa el más adecuado)";
+        text += " (varios horarios cercanos; se usa el próximo)";
       }
       scheduleFlightPreviewEl.textContent = text;
     }
@@ -712,7 +743,12 @@
       if (code === "flight-lookup-unavailable") {
         return "Consulta de vuelos no configurada en el servidor (falta API de aerolíneas).";
       }
-      if (code === "flight-lookup-unauthorized") return "Clave de API de vuelos inválida o caducada.";
+      if (code === "flight-lookup-unauthorized") {
+        return "No se pudo consultar el vuelo (revisa AERODATABOX_RAPIDAPI_KEY o AVIATIONSTACK_API_KEY en el servidor).";
+      }
+      if (code === "flight-terminal-unknown") {
+        return "No pudimos asignar terminal en Barajas para este vuelo.";
+      }
       if (code === "flight-lookup-failed") return "No se pudo consultar el vuelo. Inténtalo de nuevo.";
       return "No se pudo consultar el vuelo.";
     }
@@ -724,17 +760,12 @@
         renderFlightPreview(null, "Escribe al menos 3 caracteres (ej. IB872).");
         return;
       }
-      const location = scheduleLocationEl ? scheduleLocationEl.value : selectedLocation || "";
       if (scheduleFlightPreviewEl) {
         scheduleFlightPreviewEl.hidden = false;
         scheduleFlightPreviewEl.className = "client-schedule-flight-preview is-loading";
         scheduleFlightPreviewEl.textContent = "Consultando vuelo…";
       }
-      const url =
-        "/api/flight-lookup?code=" +
-        encodeURIComponent(code) +
-        "&location=" +
-        encodeURIComponent(location);
+      const url = "/api/flight-lookup?code=" + encodeURIComponent(code);
       fetch(url)
         .then(function(res) {
           return res.json().then(function(body) {
@@ -743,7 +774,7 @@
         })
         .then(function(result) {
           if (result.ok && result.body && result.body.ok) {
-            renderFlightPreview(result.body, null);
+            applyFlightLookupResult(result.body);
             return;
           }
           const err = (result.body && result.body.error) || "flight-lookup-failed";
@@ -774,13 +805,21 @@
       if (scheduleDialogEl.open) scheduleDialogEl.close();
     }
 
+    function syncScheduleFlightFormVisibility() {
+      const isFlight = scheduleMode === "flight";
+      if (scheduleDatetimeFieldsEl) scheduleDatetimeFieldsEl.hidden = !isFlight ? false : true;
+      if (scheduleFlightFieldsEl) scheduleFlightFieldsEl.hidden = !isFlight;
+      if (scheduleLocationLabelEl) scheduleLocationLabelEl.hidden = isFlight;
+      if (scheduleLocationEl) scheduleLocationEl.hidden = isFlight;
+      if (schedulePeopleFieldsEl) schedulePeopleFieldsEl.hidden = isFlight;
+    }
+
     function setScheduleMode(mode) {
       scheduleMode = mode === "flight" ? "flight" : "datetime";
       scheduleModeEls.forEach(function(btn) {
         btn.classList.toggle("active", btn.dataset.mode === scheduleMode);
       });
-      if (scheduleDatetimeFieldsEl) scheduleDatetimeFieldsEl.hidden = scheduleMode !== "datetime";
-      if (scheduleFlightFieldsEl) scheduleFlightFieldsEl.hidden = scheduleMode !== "flight";
+      syncScheduleFlightFormVisibility();
       if (scheduleMode !== "flight") clearFlightPreview();
     }
 
@@ -802,7 +841,10 @@
             otherName: trip.flightOtherAirportName
           };
           scheduleStatusEl.textContent =
-            "Programado: " + label + " · " + formatFlightLegSummary(leg, trip.flightCode);
+            "Programado: " +
+            label +
+            " · " +
+            formatFlightLegSummary(leg, trip.flightCode, label);
         } else {
           scheduleStatusEl.textContent = "Programado: " + label + " · " + trip.flightCode;
         }
@@ -832,24 +874,42 @@
       else if (code === "flight-lookup-unavailable") target.textContent = flightLookupErrorMessage(code);
       else if (code === "flight-lookup-unauthorized") target.textContent = flightLookupErrorMessage(code);
       else if (code === "flight-lookup-failed") target.textContent = flightLookupErrorMessage(code);
+      else if (code === "flight-terminal-unknown") target.textContent = flightLookupErrorMessage(code);
       else if (code === "invalid-datetime") target.textContent = "Indica día y hora de salida";
       else if (code === "past-datetime") target.textContent = "La salida debe ser en el futuro";
       else target.textContent = "No se pudo guardar el viaje";
     }
 
     function saveScheduledTrip() {
+      if (scheduleMode === "flight") {
+        if (!lastFlightLookup || !lastFlightLookup.ok) {
+          showScheduleError("invalid-flight");
+          if (scheduleDialogStatusEl) {
+            scheduleDialogStatusEl.textContent = "Consulta el vuelo antes de guardar.";
+          }
+          return;
+        }
+        const payload = {
+          mode: "flight",
+          flightCode: scheduleFlightEl ? scheduleFlightEl.value : "",
+          location: scheduleFlightResolvedLocation || "",
+          people: 1
+        };
+        socket.emit("schedule-trip", payload);
+        return;
+      }
       const location = scheduleLocationEl ? scheduleLocationEl.value : "";
       const people = Math.max(1, Math.min(MAX_SIGNUP_PEOPLE, Number(schedulePeopleEl && schedulePeopleEl.value) || partyCount));
       if (schedulePeopleEl) schedulePeopleEl.value = String(people);
       const payload = { location: location, people: people, mode: scheduleMode };
-      if (scheduleMode === "flight") {
-        payload.flightCode = scheduleFlightEl ? scheduleFlightEl.value : "";
-      } else {
+      if (scheduleMode === "datetime") {
         payload.departureDate = scheduleDateEl ? scheduleDateEl.value : "";
         payload.departureTime = scheduleTimeEl ? scheduleTimeEl.value : "";
       }
       socket.emit("schedule-trip", payload);
     }
+
+    syncScheduleFlightFormVisibility();
 
     if (scheduleDateEl) {
       scheduleDateEl.min = madridTodayInputValue();
@@ -897,14 +957,6 @@
         }
       });
     }
-    if (scheduleLocationEl) {
-      scheduleLocationEl.addEventListener("change", function() {
-        if (scheduleMode === "flight" && scheduleFlightEl && scheduleFlightEl.value.trim().length >= 3) {
-          requestFlightLookup();
-        }
-      });
-    }
-
     if (scheduleSaveBtnEl) {
       scheduleSaveBtnEl.addEventListener("click", saveScheduledTrip);
     }
@@ -926,19 +978,23 @@
         if (data.mode === "flight") {
           setScheduleMode("flight");
           if (scheduleFlightEl) scheduleFlightEl.value = data.flightCode || "";
+          scheduleFlightResolvedLocation = data.location || null;
           if (data.flightDate && data.flightTime) {
-            renderFlightPreview({
+            applyFlightLookupResult({
               ok: true,
               flightCode: data.flightCode,
+              suggestedLocation: data.location,
+              suggestedLocationLabel: SIGNUP_LABELS[data.location] || data.location,
               leg: {
                 direction: data.flightLeg,
                 date: data.flightDate,
                 time: data.flightTime,
                 terminal: data.flightTerminal,
+                terminalLabel: data.flightTerminalLabel,
                 otherIata: data.flightOtherAirport,
                 otherName: data.flightOtherAirportName
               }
-            }, null);
+            });
           }
         } else {
           setScheduleMode("datetime");
