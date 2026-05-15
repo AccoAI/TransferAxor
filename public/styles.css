@@ -292,16 +292,16 @@ body.hotel-page.hotel-rotated-portrait .hotel-portrait-root {
   width: 100vh;
   height: 100vw;
   transform: translate(-50%, -50%) rotate(90deg);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   box-sizing: border-box;
   background: var(--bg);
 }
 
 body.hotel-page.hotel-native-portrait .hotel-portrait-root {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   width: 100vw;
   height: 100svh;
   min-height: 100svh;
@@ -322,43 +322,45 @@ body.hotel-page.hotel-native-portrait .hotel-portrait-root {
 }
 
 .hotel-page .map-container {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .hotel-page #map {
-  flex: 1 1 auto;
-  min-height: 68%;
+  min-height: 0;
   width: 100%;
   height: 100%;
   background: #1a2332;
 }
 
+/* Altura = contenido exacto; sin scroll ni hueco extra */
 .hotel-page .legend.hotel-board {
   position: relative;
   left: auto;
   right: auto;
   bottom: auto;
-  flex: 0 0 auto;
   width: 100%;
-  max-height: min(28vh, 11.5rem);
-  min-height: 0;
+  max-height: none;
   margin: 0;
-  padding: 0.35rem 0.5rem;
-  padding-bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
-  gap: 0.2rem;
-  border-radius: 12px 12px 0 0;
+  padding: 0.3rem 0.45rem;
+  padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+  gap: 0.15rem;
+  border-radius: 10px 10px 0 0;
   border-left: 0;
   border-right: 0;
   border-bottom: 0;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.32);
   z-index: 100;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
+}
+
+.hotel-page .legend.hotel-board .legend-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
 }
 
 .map-status-banner {
@@ -382,25 +384,14 @@ body.hotel-page.hotel-native-portrait .hotel-portrait-root {
   line-height: 1.25;
 }
 
-/* TV / pantalla alta: mapa lo máximo, panel compacto */
+/* TV: tipografía legible sin agrandar el panel */
 @media (min-height: 720px) {
-  .hotel-page #map {
-    min-height: 74%;
+  .hotel-page .legend.hotel-board .legend-item {
+    font-size: 0.82rem;
   }
 
-  .hotel-page .legend.hotel-board {
-    max-height: min(22vh, 10rem);
-  }
-}
-
-/* Móvil (por si abren el enlace): panel con scroll, mapa visible */
-@media (max-width: 520px), (max-height: 640px) {
-  .hotel-page #map {
-    min-height: 55%;
-  }
-
-  .hotel-page .legend.hotel-board {
-    max-height: min(36vh, 13rem);
+  .hotel-page .hotel-circuits-intro {
+    font-size: 0.72rem;
   }
 }
 
@@ -494,18 +485,43 @@ body.hotel-page.hotel-native-portrait .hotel-portrait-root {
 }
 
 .hotel-page .legend-vehicle-row-active {
-  padding: 0.28rem 0.2rem;
+  padding: 0.18rem 0.15rem;
 }
 
-.hotel-page .legend-vehicle-row-active .legend-vehicle-status {
-  font-size: 0.68rem;
-  line-height: 1.3;
-  max-height: 3.9em;
+/* En TV solo una línea de ETA; el detalle multilínea va en summary o se omite */
+.hotel-page .legend.hotel-board .legend-vehicle-status {
+  display: none;
+}
+
+.hotel-page .legend-vehicle-row .legend-vehicle-main {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.hotel-page .legend-vehicle-row .legend-label {
+  flex-shrink: 0;
+}
+
+.hotel-page .legend-vehicle-row .legend-eta {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
 }
 
-.hotel-page .legend-vehicle-row:not(.legend-vehicle-row-active):not(.legend-vehicle-row-idle) .legend-pax,
-.hotel-page .legend-vehicle-row:not(.legend-vehicle-row-active) .legend-vehicle-status {
+.hotel-page .legend-vehicle-row-active .legend-eta {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 0.76rem;
+  color: var(--accent);
+}
+
+.hotel-page .legend-vehicle-row:not(.legend-vehicle-row-active):not(.legend-vehicle-row-idle) .legend-pax {
   display: none;
 }
 

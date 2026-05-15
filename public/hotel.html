@@ -27,6 +27,18 @@
       syncHotelPortraitLayout();
       window.addEventListener("resize", syncHotelPortraitLayout);
       window.addEventListener("orientationchange", syncHotelPortraitLayout);
+      if (typeof ResizeObserver !== "undefined") {
+        document.addEventListener("DOMContentLoaded", function() {
+          var legend = document.getElementById("legend");
+          if (!legend) return;
+          var ro = new ResizeObserver(function() {
+            if (typeof window.notifyHotelLayoutChanged === "function") {
+              window.notifyHotelLayoutChanged();
+            }
+          });
+          ro.observe(legend);
+        });
+      }
     })();
   </script>
   <div class="hotel-portrait-root" id="hotelPortraitRoot">
