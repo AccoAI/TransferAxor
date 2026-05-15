@@ -993,6 +993,8 @@
     let directionsRenderer;
     let passengerTripDirectionsRenderer = null;
     let lastPassengerTripDirectionsResult = null;
+    /** Ruta en vivo del transfer asignado (GPS → destino por circuito). */
+    let vehiclePickupDirectionsRenderer = null;
     let directionsServiceInstance = null;
     let lastPickupRouteOrigin = null;
     let lastPickupDirectionsResult = null;
@@ -1440,6 +1442,9 @@
       if (lastPassengerTripDirectionsResult) {
         extendBoundsFromDirectionsResult(bounds, lastPassengerTripDirectionsResult);
       }
+      if (lastPickupDirectionsResult) {
+        extendBoundsFromDirectionsResult(bounds, lastPickupDirectionsResult);
+      }
       bounds.extend(waitPt);
       if (destPt) bounds.extend(destPt);
       bounds.extend({ lat: veh.lat, lng: veh.lng });
@@ -1592,7 +1597,7 @@
       applyCircuitPolylineStyle();
     }
 
-    function clearVehiclePickupEta() {
+    function clearVehiclePickupRoute() {
       if (activeVehicleIdOnMap) {
         const m = vehicleMeta[activeVehicleIdOnMap];
         if (m) {
@@ -1602,11 +1607,13 @@
       }
       lastPickupRouteOrigin = null;
       lastPickupDirectionsResult = null;
+      if (vehiclePickupDirectionsRenderer) vehiclePickupDirectionsRenderer.setMap(null);
+      applyCircuitPolylineStyle();
     }
 
     function clearPickupRoute() {
       clearPassengerTripRoute();
-      clearVehiclePickupEta();
+      clearVehiclePickupRoute();
     }
 
     function updatePassengerDirectPreviewRoute(directionsService, force) {
@@ -1615,13 +1622,13 @@
 
       const portadaReq = getPassengerPortadaRouteRequest();
       if (!portadaReq || !portadaReq.origin || !portadaReq.destination) {
-        clearPickupRoute();
+        clearPassengerTripRoute();
         return;
       }
       const o = portadaReq.origin;
       const d = portadaReq.destination;
       if (distanceKm(o.lat, o.lng, d.lat, d.lng) < 0.03) {
-        clearPickupRoute();
+        clearPassengerTripRoute();
         return;
       }
 
@@ -1697,13 +1704,13 @@
     }
 
     function updatePickupRoute(lat, lng, directionsService) {
-      if (!signedUp || !selectedLocation || !tripDestination || !directionsService) {
-        clearVehiclePickupEta();
+      if (!signedUp || !selectedLocation || !tripDestination || !directionsService || !map) {
+        clearVehiclePickupRoute();
         return;
       }
       const destKey = getEffectiveTripDestinationKey();
       if (!destKey) {
-        clearVehiclePickupEta();
+        clearVehiclePickupRoute();
         return;
       }
       const routeKey = getPickupRouteCacheKey();
@@ -1716,9 +1723,26 @@
       const requestSnap = routeKey;
       lastPickupRouteOrigin = { lat: lat, lng: lng, key: routeKey };
 
-      function applyPickupEtaFromResult(result) {
+      function applyVehiclePickupDirectionsResult(result) {
         if (!signedUp || getPickupRouteCacheKey() !== requestSnap) return;
         lastPickupDirectionsResult = result;
+        if (!vehiclePickupDirectionsRenderer) {
+          vehiclePickupDirectionsRenderer = new google.maps.DirectionsRenderer({
+            map: map,
+            suppressMarkers: true,
+            preserveViewport: true,
+            polylineOptions: {
+              strokeColor: "#58a6ff",
+              strokeOpacity: 0.92,
+              strokeWeight: 6,
+              zIndex: 4
+            }
+          });
+        } else {
+          vehiclePickupDirectionsRenderer.setMap(map);
+        }
+        vehiclePickupDirectionsRenderer.setDirections(result);
+        applyCircuitPolylineStyle();
         const aid = activeVehicleIdOnMap;
         if (aid && result.routes && result.routes[0]) {
           const meta = vehicleMeta[aid] || {};
@@ -1748,34 +1772,34 @@
           region: "es"
         }, function(result, status) {
           if (status !== google.maps.DirectionsStatus.OK) {
-            clearVehiclePickupEta();
+            clearVehiclePickupRoute();
             return;
           }
-          applyPickupEtaFromResult(result);
+          applyVehiclePickupDirectionsResult(result);
         });
         return;
       }
 
-      const waitLl = getPassengerSignupOriginLatLng();
-      const waitIdx = locationKeyToStopIndex(selectedLocation);
-      if (!waitLl || waitIdx === null) {
-        clearVehiclePickupEta();
+      const destination = getSignupDestinationPosition();
+      const destinationStopIndex = locationKeyToStopIndex(destKey);
+      if (!destination || destinationStopIndex === null) {
+        clearVehiclePickupRoute();
         return;
       }
-      const waypoints = buildCircuitWaypoints(currentLeg, waitIdx);
+      const waypoints = buildCircuitWaypoints(currentLeg, destinationStopIndex);
       directionsService.route({
         origin: { lat: lat, lng: lng },
-        destination: waitLl,
+        destination: destination,
         waypoints: waypoints,
         optimizeWaypoints: false,
         travelMode: google.maps.TravelMode.DRIVING,
         region: "es"
       }, function(result, status) {
         if (status !== google.maps.DirectionsStatus.OK) {
-          clearVehiclePickupEta();
+          clearVehiclePickupRoute();
           return;
         }
-        applyPickupEtaFromResult(result);
+        applyVehiclePickupDirectionsResult(result);
       });
     }
 
@@ -1795,9 +1819,9 @@
           lastActiveVehicleEta.lng,
           directionsServiceInstance
         );
-        return;
+      } else {
+        clearVehiclePickupRoute();
       }
-      clearVehiclePickupEta();
     }
 
     // Puntos finales de cada tramo: leg 0→T1, 1→T2, 2→T4, 3→Hotel
