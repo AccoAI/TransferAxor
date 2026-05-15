@@ -330,8 +330,8 @@ body.hotel-page.hotel-native-portrait .hotel-portrait-root {
 }
 
 .hotel-page #map {
-  flex: 1 1 0;
-  min-height: 45%;
+  flex: 1 1 auto;
+  min-height: 68%;
   width: 100%;
   height: 100%;
   background: #1a2332;
@@ -342,20 +342,23 @@ body.hotel-page.hotel-native-portrait .hotel-portrait-root {
   left: auto;
   right: auto;
   bottom: auto;
-  flex: 0 1 40%;
+  flex: 0 0 auto;
   width: 100%;
-  max-height: 42%;
+  max-height: min(28vh, 11.5rem);
   min-height: 0;
   margin: 0;
-  border-radius: 14px 14px 0 0;
+  padding: 0.35rem 0.5rem;
+  padding-bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+  gap: 0.2rem;
+  border-radius: 12px 12px 0 0;
   border-left: 0;
   border-right: 0;
   border-bottom: 0;
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
   z-index: 100;
+  overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
 }
 
 .map-status-banner {
@@ -379,33 +382,36 @@ body.hotel-page.hotel-native-portrait .hotel-portrait-root {
   line-height: 1.25;
 }
 
-@media (orientation: portrait) {
-  .hotel-page .hotel-circuits-intro {
-    font-size: clamp(0.78rem, 2.1vw, 0.98rem);
-  }
-
-  .hotel-page .display-board .legend-eta-title,
-  .hotel-page .legend-item {
-    font-size: clamp(0.88rem, 2.35vw, 1.05rem);
-  }
-
-  .hotel-page .legend-vehicle-status {
-    font-size: clamp(0.76rem, 2vw, 0.9rem);
-  }
-
-  .hotel-page .legend-eta {
-    font-size: clamp(0.82rem, 2.2vw, 0.98rem);
-  }
-}
-
-@media (orientation: portrait) and (min-height: 1100px) {
+/* TV / pantalla alta: mapa lo máximo, panel compacto */
+@media (min-height: 720px) {
   .hotel-page #map {
-    flex: 1 1 60%;
+    min-height: 74%;
   }
 
   .hotel-page .legend.hotel-board {
-    max-height: 38vh;
+    max-height: min(22vh, 10rem);
   }
+}
+
+/* Móvil (por si abren el enlace): panel con scroll, mapa visible */
+@media (max-width: 520px), (max-height: 640px) {
+  .hotel-page #map {
+    min-height: 55%;
+  }
+
+  .hotel-page .legend.hotel-board {
+    max-height: min(36vh, 13rem);
+  }
+}
+
+.hotel-page .hotel-circuits-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  margin-bottom: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+  line-height: 1.25;
 }
 
 .hotel-circuits-intro {
@@ -444,17 +450,63 @@ body.hotel-page.hotel-native-portrait .hotel-portrait-root {
   margin-bottom: 0.4rem;
 }
 
-.hotel-page .display-board .legend-eta-title,
-.hotel-page .legend-item {
-  font-size: clamp(0.88rem, 2.2vw, 1.05rem);
+.hotel-page .display-board .legend-eta-title {
+  font-size: 0.72rem;
+  margin: 0 0 0.15rem;
+  color: var(--muted);
 }
 
-.hotel-page .legend-vehicle-status {
-  font-size: clamp(0.76rem, 1.9vw, 0.92rem);
+.hotel-page .legend.hotel-board .legend-item {
+  font-size: 0.8rem;
+  padding: 0.12rem 0.2rem;
+  gap: 0.35rem;
 }
 
-.hotel-page .legend-eta {
-  font-size: clamp(0.82rem, 2.1vw, 0.98rem);
+.hotel-page .legend.hotel-board .legend-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: 0.2rem;
+}
+
+.hotel-page .legend.hotel-board .legend-vehicle-row {
+  align-items: center;
+  padding: 0.1rem 0.15rem;
+}
+
+.hotel-page .legend-vehicle-row-idle .legend-pax,
+.hotel-page .legend-vehicle-row-idle .legend-vehicle-status {
+  display: none;
+}
+
+.hotel-page .legend-vehicle-row-idle .legend-vehicle-main {
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+}
+
+.hotel-page .legend-vehicle-row-idle .legend-label {
+  flex-shrink: 0;
+}
+
+.hotel-page .legend-vehicle-row-idle .legend-eta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.hotel-page .legend-vehicle-row-active {
+  padding: 0.28rem 0.2rem;
+}
+
+.hotel-page .legend-vehicle-row-active .legend-vehicle-status {
+  font-size: 0.68rem;
+  line-height: 1.3;
+  max-height: 3.9em;
+  overflow: hidden;
+}
+
+.hotel-page .legend-vehicle-row:not(.legend-vehicle-row-active):not(.legend-vehicle-row-idle) .legend-pax,
+.hotel-page .legend-vehicle-row:not(.legend-vehicle-row-active) .legend-vehicle-status {
+  display: none;
 }
 
 .map-header {

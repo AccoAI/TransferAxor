@@ -607,13 +607,28 @@
       });
     }
 
+    function setVehicleRowDisplayMode(vehicleId, mode) {
+      const row = document.getElementById(vehicleRowEl[vehicleId]);
+      if (!row) return;
+      row.classList.toggle("legend-vehicle-row-idle", mode === "idle");
+      row.classList.toggle("legend-vehicle-row-live", mode === "live");
+    }
+
     function setPaxForVehicle(vehicleId, passengers, capacity, isActive) {
       const meta = vehicleMeta[vehicleId] || {};
       meta.passengers = passengers || 0;
       meta.capacity = capacity || 8;
       vehicleMeta[vehicleId] = meta;
       const paxNode = document.getElementById(paxEl[vehicleId]);
-      if (paxNode) paxNode.textContent = isActive ? ("A bordo " + meta.passengers + "/" + meta.capacity) : "A bordo —";
+      if (paxNode) {
+        if (isActive) {
+          paxNode.hidden = false;
+          paxNode.textContent = "A bordo " + meta.passengers + "/" + meta.capacity;
+        } else {
+          paxNode.textContent = "";
+          paxNode.hidden = true;
+        }
+      }
       if (vehicleMarkers[vehicleId]) {
         const label = meta.label || vehicleId;
         vehicleMarkers[vehicleId].setTitle(label + " · A bordo " + meta.passengers + "/" + meta.capacity);
@@ -632,6 +647,13 @@
       if (el) el.textContent = eta.summary || "—";
       const statusNode = document.getElementById(statusEl[vehicleId]);
       if (statusNode) statusNode.textContent = eta.detail || "";
+      if (vehicleId === activeVehicleIdOnMap && eta && eta.detail) {
+        setVehicleRowDisplayMode(vehicleId, "live");
+      } else if (eta && eta.summary === "Sin GPS") {
+        setVehicleRowDisplayMode(vehicleId, "idle");
+      } else {
+        setVehicleRowDisplayMode(vehicleId, "");
+      }
     }
 
     function createVehicleIcon(vehicleId) {
@@ -869,8 +891,9 @@
           }
           if (rowEl) rowEl.hidden = false;
           if (!hasGps) {
+            setVehicleRowDisplayMode(id, "idle");
             setPaxForVehicle(id, vehicle.passengers, vehicle.capacity, false);
-            setEtaForVehicle(id, label, { summary: "Sin GPS", detail: "Esperando señal del conductor" });
+            setEtaForVehicle(id, label, { summary: "Sin GPS", detail: "" });
             return;
           }
 
@@ -879,7 +902,10 @@
             vehicleMarkers[id].setMap(null);
             vehicleMarkers[id] = null;
           }
-          if (id !== activeId) setEtaForVehicle(id, label, { summary: "—", detail: "" });
+          if (id !== activeId) {
+            setVehicleRowDisplayMode(id, "");
+            setEtaForVehicle(id, label, { summary: "—", detail: "" });
+          }
         });
 
         if (activeOne) {
