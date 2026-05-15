@@ -260,14 +260,56 @@ body {
   min-height: -webkit-fill-available;
 }
 
-/* Pantalla hotel — TV en vertical (mismo uso que móvil en portrait) */
+/* Pantalla hotel — TV en vertical; anula el marco 9:16 de .map-page */
 .hotel-page.map-page {
-  width: 100%;
-  max-width: 100vw;
-  margin: 0 auto;
+  width: 100vw;
+  max-width: none;
+  margin: 0;
+  height: 100vh;
+  height: 100dvh;
   height: 100svh;
   max-height: 100svh;
   overflow: hidden;
+}
+
+html.hotel-rotated,
+body.hotel-page.hotel-rotated-portrait {
+  width: 100vw;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  margin: 0;
+  max-width: none;
+}
+
+/* TV montada en vertical pero el navegador reporta landscape: rotar toda la UI */
+body.hotel-page.hotel-rotated-portrait .hotel-portrait-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vh;
+  height: 100vw;
+  max-width: none;
+  max-height: none;
+  transform: rotate(-90deg) translateX(-100vh);
+  transform-origin: top left;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: var(--bg);
+}
+
+body.hotel-page.hotel-native-portrait .hotel-portrait-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  max-height: 100svh;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .hotel-page .hotel-header {
@@ -290,8 +332,8 @@ body {
 }
 
 .hotel-page #map {
-  flex: 1 1 56%;
-  min-height: 30vh;
+  flex: 1 1 58%;
+  min-height: 0;
   width: 100%;
   height: auto;
 }
@@ -301,9 +343,10 @@ body {
   left: auto;
   right: auto;
   bottom: auto;
-  flex: 0 1 auto;
+  flex: 0 1 40%;
   width: 100%;
-  max-height: min(44vh, 40%);
+  max-height: 42%;
+  min-height: 0;
   margin: 0;
   border-radius: 14px 14px 0 0;
   border-left: 0;

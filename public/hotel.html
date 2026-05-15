@@ -7,17 +7,26 @@
   <title>Transfer Axor - Pantalla hotel</title>
   <link rel="stylesheet" href="styles.css">
   <script src="/config.js"></script>
-</head>
-<body class="hotel-page map-page map-page-vertical">
   <script>
     (function() {
-      try {
-        if (screen.orientation && screen.orientation.lock) {
-          screen.orientation.lock("portrait").catch(function() {});
+      function syncHotelPortraitLayout() {
+        var landscapeViewport = window.innerWidth > window.innerHeight;
+        document.documentElement.classList.toggle("hotel-rotated", landscapeViewport);
+        document.body.classList.toggle("hotel-rotated-portrait", landscapeViewport);
+        document.body.classList.toggle("hotel-native-portrait", !landscapeViewport);
+        if (typeof window.notifyHotelLayoutChanged === "function") {
+          window.notifyHotelLayoutChanged();
         }
-      } catch (e) {}
+      }
+      syncHotelPortraitLayout();
+      window.addEventListener("resize", syncHotelPortraitLayout);
+      window.addEventListener("orientationchange", syncHotelPortraitLayout);
+      window.syncHotelPortraitLayout = syncHotelPortraitLayout;
     })();
   </script>
+</head>
+<body class="hotel-page map-page map-page-vertical">
+  <div class="hotel-portrait-root" id="hotelPortraitRoot">
   <header class="map-header hotel-header">
     <img src="img/logo-axor.png" alt="Axor Hoteles" class="header-logo">
     <h1>Transfer — Barajas T1–T4 · IFEMA</h1>
@@ -40,6 +49,7 @@
         <div class="legend-item legend-vehicle-row" id="vehicle-row-minibus"><span class="legend-dot minibus"></span><div class="legend-vehicle-copy"><div class="legend-vehicle-main"><span class="legend-label">Minibus MSX</span><span class="legend-pax" id="pax5"></span><span class="legend-eta" id="eta5"></span></div><div class="legend-vehicle-status" id="status5"></div></div></div>
       </div>
     </div>
+  </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -901,6 +911,9 @@
 
       google.maps.event.addListenerOnce(map, "idle", function() {
         scheduleFitRouteViewport();
+        if (typeof window.syncHotelPortraitLayout === "function") {
+          window.syncHotelPortraitLayout();
+        }
       });
     }
 
@@ -936,6 +949,14 @@
     window.initMap = initMap;
     window.gm_authFailure = function() {
       showHotelMapStatus("Clave de Google Maps rechazada. Revisa la API key y las restricciones de dominio en Google Cloud.");
+    };
+
+    window.notifyHotelLayoutChanged = function() {
+      if (!map) return;
+      requestAnimationFrame(function() {
+        google.maps.event.trigger(map, "resize");
+        scheduleFitRouteViewport();
+      });
     };
 
     loadHotelGoogleMaps();
