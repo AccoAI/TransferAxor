@@ -121,12 +121,11 @@ function scheduleConductorStaleCleanup() {
   }, CONDUCTOR_GRACE_MS);
 }
 
-if (process.env.GOOGLE_MAPS_API_KEY) {
-  app.get("/config.js", (req, res) => {
-    res.type("application/javascript");
-    res.send("window.GOOGLE_MAPS_API_KEY = " + JSON.stringify(process.env.GOOGLE_MAPS_API_KEY) + ";\n");
-  });
-}
+app.get("/config.js", (req, res) => {
+  const key = process.env.GOOGLE_MAPS_API_KEY || "";
+  res.type("application/javascript");
+  res.send("window.GOOGLE_MAPS_API_KEY = " + JSON.stringify(key) + ";\n");
+});
 
 app.use(express.static(path.join(__dirname, "public")));
 

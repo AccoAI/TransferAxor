@@ -263,6 +263,29 @@ body {
 .hotel-page {
   max-width: none;
   margin: 0;
+  width: 100vw;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.hotel-page .map-container {
+  flex: 1 1 auto;
+  min-height: 40vh;
+}
+
+.map-status-banner {
+  position: absolute;
+  z-index: 500;
+  top: 0.75rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  background: rgba(248, 81, 73, 0.95);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  pointer-events: none;
 }
 
 .hotel-header h1 {
