@@ -7,10 +7,15 @@
   <title>Transfer Axor - Pantalla hotel</title>
   <link rel="stylesheet" href="styles.css">
   <script src="/config.js"></script>
+</head>
+<body class="hotel-page map-page map-page-vertical">
   <script>
     (function() {
       function syncHotelPortraitLayout() {
-        var landscapeViewport = window.innerWidth > window.innerHeight;
+        if (!document.body) return;
+        var params = new URLSearchParams(window.location.search);
+        var noRotate = params.get("noRotate") === "1" || params.get("layout") === "native";
+        var landscapeViewport = !noRotate && window.innerWidth > window.innerHeight;
         document.documentElement.classList.toggle("hotel-rotated", landscapeViewport);
         document.body.classList.toggle("hotel-rotated-portrait", landscapeViewport);
         document.body.classList.toggle("hotel-native-portrait", !landscapeViewport);
@@ -18,14 +23,12 @@
           window.notifyHotelLayoutChanged();
         }
       }
+      window.syncHotelPortraitLayout = syncHotelPortraitLayout;
       syncHotelPortraitLayout();
       window.addEventListener("resize", syncHotelPortraitLayout);
       window.addEventListener("orientationchange", syncHotelPortraitLayout);
-      window.syncHotelPortraitLayout = syncHotelPortraitLayout;
     })();
   </script>
-</head>
-<body class="hotel-page map-page map-page-vertical">
   <div class="hotel-portrait-root" id="hotelPortraitRoot">
   <header class="map-header hotel-header">
     <img src="img/logo-axor.png" alt="Axor Hoteles" class="header-logo">
@@ -953,10 +956,11 @@
 
     window.notifyHotelLayoutChanged = function() {
       if (!map) return;
-      requestAnimationFrame(function() {
+      setTimeout(function() {
+        if (!map) return;
         google.maps.event.trigger(map, "resize");
         scheduleFitRouteViewport();
-      });
+      }, 120);
     };
 
     loadHotelGoogleMaps();
