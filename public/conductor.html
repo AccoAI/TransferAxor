@@ -195,6 +195,11 @@
         let detail = "";
         if (trip.mode === "flight" && trip.flightCode) {
           detail = "Vuelo " + trip.flightCode;
+          if (trip.flightDate && trip.flightTime) {
+            const legLabel = trip.flightLeg === "arrival" ? "Llegada MAD" : "Salida MAD";
+            detail += " · " + legLabel + " " + formatScheduleDateLabel(trip.flightDate) + " " + trip.flightTime;
+            if (trip.flightTerminal) detail += " · T" + trip.flightTerminal;
+          }
         } else if (trip.departureDate && trip.departureTime) {
           detail = formatScheduleDateLabel(trip.departureDate) + " " + trip.departureTime;
         }

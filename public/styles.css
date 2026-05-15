@@ -642,6 +642,53 @@ body {
   color: var(--muted);
 }
 
+.client-schedule-flight-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.client-schedule-flight-row .client-schedule-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.client-schedule-flight-lookup {
+  flex-shrink: 0;
+  padding: 0 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(56, 139, 253, 0.15);
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.client-schedule-flight-lookup:active {
+  transform: scale(0.98);
+}
+
+.client-schedule-flight-preview {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.client-schedule-flight-preview.is-ok {
+  color: #7ee787;
+}
+
+.client-schedule-flight-preview.is-error {
+  color: #ff7b72;
+}
+
+.client-schedule-flight-preview.is-loading {
+  color: var(--accent);
+}
+
 .client-schedule-select,
 .client-schedule-input {
   width: 100%;
@@ -738,45 +785,6 @@ body {
 
 .map-no-vehicle-banner-btn:active {
   transform: scale(0.98);
-}
-
-.map-recenter-btn {
-  position: absolute;
-  z-index: 2050;
-  right: max(0.65rem, env(safe-area-inset-right));
-  bottom: max(9.5rem, 22vh);
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: rgba(26, 35, 50, 0.96);
-  color: var(--muted);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
-}
-
-.map-recenter-btn:active {
-  transform: scale(0.96);
-}
-
-.map-recenter-btn.map-recenter-btn--free {
-  color: var(--accent);
-  box-shadow: 0 2px 14px rgba(88, 166, 255, 0.22);
-}
-
-.map-recenter-btn.map-recenter-btn--following {
-  color: var(--muted);
-}
-
-.map-recenter-icon {
-  width: 22px;
-  height: 22px;
 }
 
 /* Bocadillos de Google Maps: fondo claro, texto oscuro (no heredar el tema oscuro del body) */

@@ -12,3 +12,7 @@ services:
         sync: false
       - key: CONDUCTOR_ACCESS_KEY
         sync: false
+      - key: AERODATABOX_RAPIDAPI_KEY
+        sync: false
+      - key: AVIATIONSTACK_API_KEY
+        sync: false

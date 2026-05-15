@@ -48,8 +48,8 @@
     <div class="client-signup-dest" id="hotelDestRow" hidden>
       <div class="client-signup-dest-inner">
         <span class="client-signup-label client-signup-dest-label">Destino</span>
-        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino: Hotel Campezo 4, T1, T2, T4, IFEMA o Simuladores">
-          <button type="button" class="client-signup-stop client-signup-dest" data-dest="hotel">Hotel Campezo 4</button>
+        <div class="client-signup-dest-strip" id="hotelDestStops" role="group" aria-label="Destino: Hoteles Axor, T1, T2, T4, IFEMA o Simuladores">
+          <button type="button" class="client-signup-stop client-signup-dest" data-dest="hotel">Hoteles Axor</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t1">T1</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t2">T2</button>
           <button type="button" class="client-signup-stop client-signup-dest" data-dest="t4">T4</button>
@@ -108,7 +108,11 @@
       </div>
       <div id="scheduleFlightFields" hidden>
         <label class="client-schedule-label" for="scheduleFlight">Código de vuelo</label>
-        <input type="text" id="scheduleFlight" class="client-schedule-input" inputmode="text" autocomplete="off" placeholder="Ej. IB3163">
+        <div class="client-schedule-flight-row">
+          <input type="text" id="scheduleFlight" class="client-schedule-input" inputmode="text" autocomplete="off" placeholder="Ej. IB872">
+          <button type="button" class="client-schedule-flight-lookup" id="scheduleFlightLookupBtn">Consultar</button>
+        </div>
+        <p class="client-schedule-flight-preview" id="scheduleFlightPreview" hidden></p>
       </div>
       <label class="client-schedule-label" for="schedulePeople">Personas</label>
       <input type="number" id="schedulePeople" class="client-schedule-input" min="1" max="15" step="1" inputmode="numeric" value="1">
@@ -127,11 +131,6 @@
       <span class="map-no-vehicle-banner-msg" id="mapNoVehicleBannerMsg">Aún no hay Transfer Axor en vivo</span>
       <button type="button" class="map-no-vehicle-banner-btn" id="mapRequestTransferViewBtn">Solicitar visualización Transfer</button>
     </div>
-    <button type="button" class="map-recenter-btn" id="mapRecenterBtn" hidden aria-label="Centrar en mi parada y el transfer" title="Centrar mapa">
-      <svg class="map-recenter-icon" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path fill="currentColor" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
-      </svg>
-    </button>
     <div class="legend display-board legend-sheet" id="legend">
       <button type="button" class="legend-sheet-head" id="legendToggle" aria-expanded="false" aria-controls="legendBody">
         <span class="legend-sheet-handle" aria-hidden="true"></span>
@@ -179,7 +178,7 @@
       t4: "Terminal T4"
     };
     const DESTINATION_LABELS = {
-      hotel: "Hotel Campezo 4",
+      hotel: "Hoteles Axor",
       t1: "T1",
       t2: "T2",
       t4: "T4",
@@ -483,11 +482,13 @@
       if (dest === selectedLocation) return; // origen = destino inválido
       tripDestination = dest;
       syncDestButtons();
+      updateLegendCompact();
+      updatePassengerDirectPreviewRoute(directionsServiceInstance, true);
       socket.emit("signup", { location: selectedLocation, destination: dest, people: partyCount });
+      refreshPickupRoute();
       if (signedUp) {
         persistPassengerSignup(selectedLocation, partyCount, tripDestination);
         updateSignupStatus(selectedLocation, partyCount);
-        refreshPickupRoute();
       }
     }
 
@@ -536,7 +537,6 @@
         stopTrackingFitLoop();
         followUserAndVehicle = true;
       }
-      updateRecenterButtonState();
     }
 
     partyMinusEl.addEventListener("click", function() {
@@ -604,6 +604,8 @@
     const scheduleDateEl = document.getElementById("scheduleDate");
     const scheduleTimeEl = document.getElementById("scheduleTime");
     const scheduleFlightEl = document.getElementById("scheduleFlight");
+    const scheduleFlightLookupBtnEl = document.getElementById("scheduleFlightLookupBtn");
+    const scheduleFlightPreviewEl = document.getElementById("scheduleFlightPreview");
     const schedulePeopleEl = document.getElementById("schedulePeople");
     const scheduleDatetimeFieldsEl = document.getElementById("scheduleDatetimeFields");
     const scheduleFlightFieldsEl = document.getElementById("scheduleFlightFields");
@@ -613,6 +615,8 @@
     const CLIENT_MADRID_TZ = "Europe/Madrid";
     let scheduleMode = "datetime";
     let tripScheduled = false;
+    let lastFlightLookup = null;
+    let flightLookupTimer = null;
 
     function madridTodayInputValue() {
       return new Intl.DateTimeFormat("en-CA", {
@@ -635,9 +639,130 @@
       if (scheduleDialogStatusEl) scheduleDialogStatusEl.textContent = "";
     }
 
+    function clearFlightPreview() {
+      lastFlightLookup = null;
+      if (scheduleFlightPreviewEl) {
+        scheduleFlightPreviewEl.hidden = true;
+        scheduleFlightPreviewEl.textContent = "";
+        scheduleFlightPreviewEl.className = "client-schedule-flight-preview";
+      }
+    }
+
+    function formatFlightLegSummary(leg, flightCode) {
+      if (!leg) return "";
+      const when = formatScheduleDateLabel(leg.date) + " " + leg.time;
+      const term = leg.terminal ? " · terminal " + leg.terminal : "";
+      const other = leg.otherIata
+        ? (leg.direction === "arrival" ? " desde " : " hacia ") +
+          (leg.otherName || leg.otherIata) +
+          " (" +
+          leg.otherIata +
+          ")"
+        : "";
+      if (leg.direction === "arrival") {
+        return (
+          flightCode +
+          " · llegada a Madrid (Barajas)" +
+          term +
+          " · " +
+          when +
+          other
+        );
+      }
+      return (
+        flightCode +
+        " · salida desde Madrid (Barajas)" +
+        term +
+        " · " +
+        when +
+        other
+      );
+    }
+
+    function renderFlightPreview(data, errorText) {
+      if (!scheduleFlightPreviewEl) return;
+      if (errorText) {
+        scheduleFlightPreviewEl.hidden = false;
+        scheduleFlightPreviewEl.className = "client-schedule-flight-preview is-error";
+        scheduleFlightPreviewEl.textContent = errorText;
+        return;
+      }
+      if (!data || !data.ok || !data.leg) {
+        clearFlightPreview();
+        return;
+      }
+      lastFlightLookup = data;
+      scheduleFlightPreviewEl.hidden = false;
+      scheduleFlightPreviewEl.className = "client-schedule-flight-preview is-ok";
+      let text = formatFlightLegSummary(data.leg, data.flightCode);
+      if (data.legs && data.legs.length > 1) {
+        text += " (hay " + data.legs.length + " horarios en los próximos días; se usa el más adecuado)";
+      }
+      scheduleFlightPreviewEl.textContent = text;
+    }
+
+    function flightLookupErrorMessage(code) {
+      if (code === "invalid-flight") return "Indica un código de vuelo válido (ej. IB872).";
+      if (code === "flight-not-found") {
+        return "No encontramos ese vuelo en Madrid en los próximos días. Revisa el código.";
+      }
+      if (code === "flight-not-madrid") {
+        return "Ese vuelo no tiene salida ni llegada en Madrid-Barajas (MAD).";
+      }
+      if (code === "flight-lookup-unavailable") {
+        return "Consulta de vuelos no configurada en el servidor (falta API de aerolíneas).";
+      }
+      if (code === "flight-lookup-unauthorized") return "Clave de API de vuelos inválida o caducada.";
+      if (code === "flight-lookup-failed") return "No se pudo consultar el vuelo. Inténtalo de nuevo.";
+      return "No se pudo consultar el vuelo.";
+    }
+
+    function requestFlightLookup() {
+      if (!scheduleFlightEl) return;
+      const code = scheduleFlightEl.value.trim();
+      if (code.length < 3) {
+        renderFlightPreview(null, "Escribe al menos 3 caracteres (ej. IB872).");
+        return;
+      }
+      const location = scheduleLocationEl ? scheduleLocationEl.value : selectedLocation || "";
+      if (scheduleFlightPreviewEl) {
+        scheduleFlightPreviewEl.hidden = false;
+        scheduleFlightPreviewEl.className = "client-schedule-flight-preview is-loading";
+        scheduleFlightPreviewEl.textContent = "Consultando vuelo…";
+      }
+      const url =
+        "/api/flight-lookup?code=" +
+        encodeURIComponent(code) +
+        "&location=" +
+        encodeURIComponent(location);
+      fetch(url)
+        .then(function(res) {
+          return res.json().then(function(body) {
+            return { ok: res.ok, body: body };
+          });
+        })
+        .then(function(result) {
+          if (result.ok && result.body && result.body.ok) {
+            renderFlightPreview(result.body, null);
+            return;
+          }
+          const err = (result.body && result.body.error) || "flight-lookup-failed";
+          renderFlightPreview(null, flightLookupErrorMessage(err));
+        })
+        .catch(function() {
+          renderFlightPreview(null, flightLookupErrorMessage("flight-lookup-failed"));
+        });
+    }
+
+    function scheduleFlightLookupDebounced() {
+      if (flightLookupTimer) clearTimeout(flightLookupTimer);
+      flightLookupTimer = setTimeout(requestFlightLookup, 700);
+    }
+
     function openScheduleDialog() {
       if (!scheduleDialogEl) return;
       clearScheduleDialogStatus();
+      clearFlightPreview();
       if (scheduleLocationEl && selectedLocation) scheduleLocationEl.value = selectedLocation;
       if (schedulePeopleEl) schedulePeopleEl.value = String(partyCount);
       if (typeof scheduleDialogEl.showModal === "function") scheduleDialogEl.showModal();
@@ -656,6 +781,7 @@
       });
       if (scheduleDatetimeFieldsEl) scheduleDatetimeFieldsEl.hidden = scheduleMode !== "datetime";
       if (scheduleFlightFieldsEl) scheduleFlightFieldsEl.hidden = scheduleMode !== "flight";
+      if (scheduleMode !== "flight") clearFlightPreview();
     }
 
     function updateScheduleStatus(trip) {
@@ -666,7 +792,20 @@
       }
       const label = SIGNUP_LABELS[trip.location] || trip.location;
       if (trip.mode === "flight" && trip.flightCode) {
-        scheduleStatusEl.textContent = "Programado: " + label + " · " + trip.flightCode;
+        if (trip.flightDate && trip.flightTime) {
+          const leg = {
+            direction: trip.flightLeg,
+            date: trip.flightDate,
+            time: trip.flightTime,
+            terminal: trip.flightTerminal,
+            otherIata: trip.flightOtherAirport,
+            otherName: trip.flightOtherAirportName
+          };
+          scheduleStatusEl.textContent =
+            "Programado: " + label + " · " + formatFlightLegSummary(leg, trip.flightCode);
+        } else {
+          scheduleStatusEl.textContent = "Programado: " + label + " · " + trip.flightCode;
+        }
         return;
       }
       if (trip.departureDate && trip.departureTime) {
@@ -688,6 +827,11 @@
       if (!target) return;
       if (code === "invalid-location") target.textContent = "Elige desde dónde sales";
       else if (code === "invalid-flight") target.textContent = "Indica un código de vuelo válido";
+      else if (code === "flight-not-found") target.textContent = flightLookupErrorMessage(code);
+      else if (code === "flight-not-madrid") target.textContent = flightLookupErrorMessage(code);
+      else if (code === "flight-lookup-unavailable") target.textContent = flightLookupErrorMessage(code);
+      else if (code === "flight-lookup-unauthorized") target.textContent = flightLookupErrorMessage(code);
+      else if (code === "flight-lookup-failed") target.textContent = flightLookupErrorMessage(code);
       else if (code === "invalid-datetime") target.textContent = "Indica día y hora de salida";
       else if (code === "past-datetime") target.textContent = "La salida debe ser en el futuro";
       else target.textContent = "No se pudo guardar el viaje";
@@ -738,6 +882,29 @@
       });
     });
 
+    if (scheduleFlightLookupBtnEl) {
+      scheduleFlightLookupBtnEl.addEventListener("click", requestFlightLookup);
+    }
+    if (scheduleFlightEl) {
+      scheduleFlightEl.addEventListener("input", function() {
+        clearFlightPreview();
+        if (scheduleMode === "flight") scheduleFlightLookupDebounced();
+      });
+      scheduleFlightEl.addEventListener("keydown", function(event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          requestFlightLookup();
+        }
+      });
+    }
+    if (scheduleLocationEl) {
+      scheduleLocationEl.addEventListener("change", function() {
+        if (scheduleMode === "flight" && scheduleFlightEl && scheduleFlightEl.value.trim().length >= 3) {
+          requestFlightLookup();
+        }
+      });
+    }
+
     if (scheduleSaveBtnEl) {
       scheduleSaveBtnEl.addEventListener("click", saveScheduledTrip);
     }
@@ -759,6 +926,20 @@
         if (data.mode === "flight") {
           setScheduleMode("flight");
           if (scheduleFlightEl) scheduleFlightEl.value = data.flightCode || "";
+          if (data.flightDate && data.flightTime) {
+            renderFlightPreview({
+              ok: true,
+              flightCode: data.flightCode,
+              leg: {
+                direction: data.flightLeg,
+                date: data.flightDate,
+                time: data.flightTime,
+                terminal: data.flightTerminal,
+                otherIata: data.flightOtherAirport,
+                otherName: data.flightOtherAirportName
+              }
+            }, null);
+          }
         } else {
           setScheduleMode("datetime");
           if (scheduleDateEl) scheduleDateEl.value = data.departureDate || "";
@@ -810,7 +991,8 @@
 
     let map;
     let directionsRenderer;
-    let pickupDirectionsRenderer = null;
+    let passengerTripDirectionsRenderer = null;
+    let lastPassengerTripDirectionsResult = null;
     let directionsServiceInstance = null;
     let lastPickupRouteOrigin = null;
     let lastPickupDirectionsResult = null;
@@ -832,6 +1014,9 @@
     let circuitDirectionsRequestFailed = false;
     /** Duración T4→hotel (petición directa). El último tramo del circuito cerrado a veces no coincide con la llegada real al Axor. */
     let routeT4ToHotelDriveSec = null;
+    /** Hotel → IFEMA / Simuladores (servicio directo, fuera del circuito). */
+    let routeHotelToIfemaDriveSec = null;
+    let routeHotelToSimuladoresDriveSec = null;
     const PARADA_TERMINAL_MIN = 0;
     // Ruta: Hotel → T1 → T2 → T4 → Hotel (4 tramos, 4 paradas + hotel)
     const ROUTE_STOP_NAMES = ["T1", "T2", "T4", "Hotel"];
@@ -860,6 +1045,61 @@
           routeT4ToHotelDriveSec = result.routes[0].legs[0].duration.value;
         }
         if (typeof onDone === "function") onDone();
+      });
+    }
+
+    function isExtraordinaryDestinationKey(key) {
+      const k = key ? String(key).toLowerCase() : "";
+      return k === "ifema" || k === "simuladores";
+    }
+
+    function isOrchestratedCircuitDestinationKey(key) {
+      const k = key ? String(key).toLowerCase() : "";
+      return k === "t1" || k === "t2" || k === "t4";
+    }
+
+    function getExtraordinaryStopName(destKey) {
+      return LOCATION_TO_ROUTE_STOP[String(destKey).toLowerCase()] || null;
+    }
+
+    function getHotelExtraordinaryDriveSeconds(destKey) {
+      const k = String(destKey).toLowerCase();
+      if (k === "ifema") return routeHotelToIfemaDriveSec;
+      if (k === "simuladores") return routeHotelToSimuladoresDriveSec;
+      return null;
+    }
+
+    function fetchRouteHotelExtraordinaryDrives(directionsService, onDone) {
+      if (!directionsService) {
+        if (typeof onDone === "function") onDone();
+        return;
+      }
+      var pending = 2;
+      function doneOne() {
+        pending--;
+        if (pending <= 0 && typeof onDone === "function") onDone();
+      }
+      directionsService.route({
+        origin: { lat: CAMPEZO.lat, lng: CAMPEZO.lng },
+        destination: { lat: IFEMA.lat, lng: IFEMA.lng },
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      }, function(result, status) {
+        if (status === google.maps.DirectionsStatus.OK && result.routes[0] && result.routes[0].legs[0]) {
+          routeHotelToIfemaDriveSec = result.routes[0].legs[0].duration.value;
+        }
+        doneOne();
+      });
+      directionsService.route({
+        origin: { lat: CAMPEZO.lat, lng: CAMPEZO.lng },
+        destination: { lat: SIMULADORES.lat, lng: SIMULADORES.lng },
+        travelMode: google.maps.TravelMode.DRIVING,
+        region: "es"
+      }, function(result, status) {
+        if (status === google.maps.DirectionsStatus.OK && result.routes[0] && result.routes[0].legs[0]) {
+          routeHotelToSimuladoresDriveSec = result.routes[0].legs[0].duration.value;
+        }
+        doneOne();
       });
     }
 
@@ -921,6 +1161,10 @@
      * desde la próxima ranura combinada :00 / :30 (hora Madrid).
      */
     function computeHotelPassengerEtaSec(destKey) {
+      if (isExtraordinaryDestinationKey(destKey)) {
+        const drive = getHotelExtraordinaryDriveSeconds(destKey);
+        return drive == null ? null : drive;
+      }
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
       const destIndex = locationKeyToStopIndex(destKey);
       if (destIndex === null || destIndex === 3) return null;
@@ -940,10 +1184,32 @@
         return;
       }
       paintActiveVehicleRowOrchestratedHotelEtas();
+      paintActiveVehicleExtraordinaryEta();
       const vehicleId = activeVehicleIdOnMap;
 
       // Pasajero en el hotel: ETA desde próxima salida del circuito, no desde posición del vehículo
       if (selectedLocation === "hotel" && tripDestination) {
+        const destKey = String(tripDestination).toLowerCase();
+        const destLabel = DESTINATION_LABELS[destKey] || tripDestination;
+        if (isExtraordinaryDestinationKey(destKey)) {
+          const destStopName = getExtraordinaryStopName(destKey);
+          if (vehicleId && destStopName) {
+            const meta = vehicleMeta[vehicleId] || {};
+            const remaining = getStopEtaSecondsRemaining(meta, destStopName);
+            if (remaining !== null) {
+              const vehicleLabel = meta.label || vehicleId;
+              legendCompactEl.textContent = vehicleLabel + " · " + destLabel + " en " + formatMinutesDelta(remaining);
+              return;
+            }
+          }
+          const etaSec = computeHotelPassengerEtaSec(destKey);
+          if (etaSec === null) {
+            legendCompactEl.textContent = "Calculando…";
+            return;
+          }
+          legendCompactEl.textContent = destLabel + " en " + formatMinutesDelta(etaSec);
+          return;
+        }
         if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
           legendCompactEl.textContent = "Calculando ruta…";
           return;
@@ -954,7 +1220,6 @@
           legendCompactEl.textContent = "Calculando…";
           return;
         }
-        const destLabel = DESTINATION_LABELS[tripDestination] || tripDestination;
         const depLabel = dep.imminent
           ? "Salida inminente desde el hotel"
           : "Salida a las " + dep.time + " desde el hotel";
@@ -1167,14 +1432,16 @@
     function fitUserAndVehicleViewport() {
       if (!map || !followUserAndVehicle) return;
       if (!hasSignupDestinationReady() || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
-      const userPt = getSignupDestinationPosition();
-      if (!userPt) return;
+      const waitPt = getPassengerSignupOriginLatLng();
+      const destPt = getPassengerTripEndLatLng();
+      if (!waitPt) return;
       const veh = lastActiveVehicleEta;
       const bounds = new google.maps.LatLngBounds();
-      if (lastPickupDirectionsResult) {
-        extendBoundsFromDirectionsResult(bounds, lastPickupDirectionsResult);
+      if (lastPassengerTripDirectionsResult) {
+        extendBoundsFromDirectionsResult(bounds, lastPassengerTripDirectionsResult);
       }
-      bounds.extend(userPt);
+      bounds.extend(waitPt);
+      if (destPt) bounds.extend(destPt);
       bounds.extend({ lat: veh.lat, lng: veh.lng });
       mapMoveFromCode = true;
       map.fitBounds(bounds, getTrackingViewportPadding());
@@ -1188,25 +1455,6 @@
       if (!hasSignupDestinationReady() || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
       followUserAndVehicle = false;
       stopTrackingFitLoop();
-      updateRecenterButtonState();
-    }
-
-    function recenterMapOnUserAndVehicle() {
-      if (!map || !hasSignupDestinationReady() || !activeVehicleIdOnMap || !lastActiveVehicleEta) return;
-      followUserAndVehicle = true;
-      fitUserAndVehicleViewport();
-      updateTrackingFitLoop();
-      updateRecenterButtonState();
-    }
-
-    function updateRecenterButtonState() {
-      const btn = document.getElementById("mapRecenterBtn");
-      if (!btn) return;
-      const show =
-        hasSignupDestinationReady() && activeVehicleIdOnMap && lastActiveVehicleEta;
-      btn.hidden = !show;
-      btn.classList.toggle("map-recenter-btn--following", show && followUserAndVehicle);
-      btn.classList.toggle("map-recenter-btn--free", show && !followUserAndVehicle);
     }
 
     /**
@@ -1288,8 +1536,16 @@
      * (Hotel → T1 → T2 → … hasta la parada de espera), no un tramo directo tipo Hotel→T4.
      * Desde hotel con destino IFEMA/simuladores: tramo directo (fuera del circuito cerrado).
      */
+    function buildWaypointsBetweenStops(fromIdx, toIdx) {
+      const waypoints = [];
+      for (let i = fromIdx + 1; i < toIdx; i++) {
+        waypoints.push({ location: getStopLatLng(i), stopover: true });
+      }
+      return waypoints;
+    }
+
     function getPassengerPortadaRouteRequest() {
-      if (!signedUp || !selectedLocation || !tripDestination) return null;
+      if (!selectedLocation || !tripDestination) return null;
       const hotelLl = { lat: CAMPEZO.lat, lng: CAMPEZO.lng };
 
       if (selectedLocation === "hotel") {
@@ -1319,14 +1575,24 @@
           waypoints: null
         };
       }
+      const destIdx = locationKeyToStopIndex(destK);
+      if (destIdx === null || destIdx === 3) return null;
       return {
-        origin: hotelLl,
-        destination: getStopLatLng(waitIdx),
-        waypoints: buildCircuitWaypoints(-1, waitIdx)
+        origin: getStopLatLng(waitIdx),
+        destination: getStopLatLng(destIdx),
+        waypoints: buildWaypointsBetweenStops(waitIdx, destIdx)
       };
     }
 
-    function clearPickupRoute() {
+    function clearPassengerTripRoute() {
+      passengerDirectPreviewActive = false;
+      lastPassengerPreviewSnap = null;
+      if (passengerTripDirectionsRenderer) passengerTripDirectionsRenderer.setMap(null);
+      lastPassengerTripDirectionsResult = null;
+      applyCircuitPolylineStyle();
+    }
+
+    function clearVehiclePickupEta() {
       if (activeVehicleIdOnMap) {
         const m = vehicleMeta[activeVehicleIdOnMap];
         if (m) {
@@ -1334,18 +1600,18 @@
           delete m.pickupRouteAt;
         }
       }
-      passengerDirectPreviewActive = false;
-      lastPassengerPreviewSnap = null;
-      if (pickupDirectionsRenderer) pickupDirectionsRenderer.setMap(null);
       lastPickupRouteOrigin = null;
       lastPickupDirectionsResult = null;
-      applyCircuitPolylineStyle();
+    }
+
+    function clearPickupRoute() {
+      clearPassengerTripRoute();
+      clearVehiclePickupEta();
     }
 
     function updatePassengerDirectPreviewRoute(directionsService, force) {
       if (!map || !directionsService) return;
-      if (activeVehicleIdOnMap && lastActiveVehicleEta) return;
-      if (!signedUp || !selectedLocation || !tripDestination) return;
+      if (!selectedLocation || !tripDestination) return;
 
       const portadaReq = getPassengerPortadaRouteRequest();
       if (!portadaReq || !portadaReq.origin || !portadaReq.destination) {
@@ -1360,7 +1626,7 @@
       }
 
       const snap = String(selectedLocation) + "|" + String(tripDestination);
-      if (!force && passengerDirectPreviewActive && lastPassengerPreviewSnap === snap && lastPickupDirectionsResult) {
+      if (!force && passengerDirectPreviewActive && lastPassengerPreviewSnap === snap && lastPassengerTripDirectionsResult) {
         return;
       }
       lastPassengerPreviewSnap = snap;
@@ -1377,20 +1643,16 @@
       }
 
       directionsService.route(routeArgs, function(result, status) {
-        if (activeVehicleIdOnMap && lastActiveVehicleEta) return;
-        if (!signedUp || !selectedLocation || !tripDestination) return;
+        if (!selectedLocation || !tripDestination) return;
         if (lastPassengerPreviewSnap !== snap) return;
         if (status !== google.maps.DirectionsStatus.OK) {
-          passengerDirectPreviewActive = false;
-          if (pickupDirectionsRenderer) pickupDirectionsRenderer.setMap(null);
-          lastPickupDirectionsResult = null;
-          applyCircuitPolylineStyle();
+          clearPassengerTripRoute();
           return;
         }
         passengerDirectPreviewActive = true;
         applyCircuitPolylineStyle();
-        if (!pickupDirectionsRenderer) {
-          pickupDirectionsRenderer = new google.maps.DirectionsRenderer({
+        if (!passengerTripDirectionsRenderer) {
+          passengerTripDirectionsRenderer = new google.maps.DirectionsRenderer({
             map: map,
             suppressMarkers: true,
             preserveViewport: true,
@@ -1402,11 +1664,20 @@
             }
           });
         } else {
-          pickupDirectionsRenderer.setMap(map);
+          passengerTripDirectionsRenderer.setMap(map);
         }
-        pickupDirectionsRenderer.setDirections(result);
-        lastPickupDirectionsResult = result;
-        lastPickupRouteOrigin = null;
+        passengerTripDirectionsRenderer.setDirections(result);
+        lastPassengerTripDirectionsResult = result;
+        if (selectedLocation === "hotel" && tripDestination && result.routes[0] && result.routes[0].legs) {
+          const k = String(tripDestination).toLowerCase();
+          var previewSec = 0;
+          result.routes[0].legs.forEach(function(leg) {
+            previewSec += leg.duration.value;
+          });
+          if (k === "ifema") routeHotelToIfemaDriveSec = previewSec;
+          if (k === "simuladores") routeHotelToSimuladoresDriveSec = previewSec;
+          updateLegendCompact();
+        }
         scheduleFitRouteViewport(result);
       });
     }
@@ -1426,44 +1697,27 @@
     }
 
     function updatePickupRoute(lat, lng, directionsService) {
-      passengerDirectPreviewActive = false;
-      applyCircuitPolylineStyle();
-      const destination = getSignupDestinationPosition();
-      if (!destination || !signedUp || !directionsService || !map) {
-        clearPickupRoute();
+      if (!signedUp || !selectedLocation || !tripDestination || !directionsService) {
+        clearVehiclePickupEta();
         return;
       }
       const destKey = getEffectiveTripDestinationKey();
       if (!destKey) {
-        clearPickupRoute();
+        clearVehiclePickupEta();
         return;
       }
       const routeKey = getPickupRouteCacheKey();
       const last = lastPickupRouteOrigin;
-      if (last && last.key === routeKey && distanceKm(lat, lng, last.lat, last.lng) < PICKUP_ROUTE_THROTTLE_KM) return;
+      if (last && last.key === routeKey && distanceKm(lat, lng, last.lat, last.lng) < PICKUP_ROUTE_THROTTLE_KM) {
+        return;
+      }
 
       const currentLeg = getCurrentLegIndex(lat, lng);
       const requestSnap = routeKey;
       lastPickupRouteOrigin = { lat: lat, lng: lng, key: routeKey };
 
-      function applyPickupDirectionsResult(result) {
+      function applyPickupEtaFromResult(result) {
         if (!signedUp || getPickupRouteCacheKey() !== requestSnap) return;
-        if (!pickupDirectionsRenderer) {
-          pickupDirectionsRenderer = new google.maps.DirectionsRenderer({
-            map: map,
-            suppressMarkers: true,
-            preserveViewport: true,
-            polylineOptions: {
-              strokeColor: "#0b3d91",
-              strokeOpacity: 0.95,
-              strokeWeight: 7,
-              zIndex: 3
-            }
-          });
-        } else {
-          pickupDirectionsRenderer.setMap(map);
-        }
-        pickupDirectionsRenderer.setDirections(result);
         lastPickupDirectionsResult = result;
         const aid = activeVehicleIdOnMap;
         if (aid && result.routes && result.routes[0]) {
@@ -1475,6 +1729,7 @@
           meta.pickupRouteTotalSec = totalSec;
           meta.pickupRouteAt = Date.now();
           vehicleMeta[aid] = meta;
+          paintActiveVehicleExtraordinaryEta();
           updateLegendCompact();
         }
         if (followUserAndVehicle && hasSignupDestinationReady() && activeVehicleIdOnMap && lastActiveVehicleEta) {
@@ -1493,33 +1748,34 @@
           region: "es"
         }, function(result, status) {
           if (status !== google.maps.DirectionsStatus.OK) {
-            clearPickupRoute();
+            clearVehiclePickupEta();
             return;
           }
-          applyPickupDirectionsResult(result);
+          applyPickupEtaFromResult(result);
         });
         return;
       }
 
-      const destinationStopIndex = locationKeyToStopIndex(destKey);
-      if (destinationStopIndex === null) {
-        clearPickupRoute();
+      const waitLl = getPassengerSignupOriginLatLng();
+      const waitIdx = locationKeyToStopIndex(selectedLocation);
+      if (!waitLl || waitIdx === null) {
+        clearVehiclePickupEta();
         return;
       }
-      const waypoints = buildCircuitWaypoints(currentLeg, destinationStopIndex);
+      const waypoints = buildCircuitWaypoints(currentLeg, waitIdx);
       directionsService.route({
         origin: { lat: lat, lng: lng },
-        destination: destination,
+        destination: waitLl,
         waypoints: waypoints,
         optimizeWaypoints: false,
         travelMode: google.maps.TravelMode.DRIVING,
         region: "es"
       }, function(result, status) {
         if (status !== google.maps.DirectionsStatus.OK) {
-          clearPickupRoute();
+          clearVehiclePickupEta();
           return;
         }
-        applyPickupDirectionsResult(result);
+        applyPickupEtaFromResult(result);
       });
     }
 
@@ -1527,6 +1783,11 @@
       if (!directionsServiceInstance) {
         clearPickupRoute();
         return;
+      }
+      if (selectedLocation && tripDestination) {
+        updatePassengerDirectPreviewRoute(directionsServiceInstance, false);
+      } else {
+        clearPassengerTripRoute();
       }
       if (activeVehicleIdOnMap && lastActiveVehicleEta) {
         updatePickupRoute(
@@ -1536,11 +1797,7 @@
         );
         return;
       }
-      if (signedUp && selectedLocation && tripDestination) {
-        updatePassengerDirectPreviewRoute(directionsServiceInstance, false);
-        return;
-      }
-      clearPickupRoute();
+      clearVehiclePickupEta();
     }
 
     // Puntos finales de cada tramo: leg 0→T1, 1→T2, 2→T4, 3→Hotel
@@ -1612,9 +1869,27 @@
     /**
      * Pasajero en hotel: fila del vehículo activo con próxima salida :00/:30 desde el hotel (no posición GPS del bus).
      */
+    function paintActiveVehicleExtraordinaryEta() {
+      if (!activeVehicleIdOnMap) return;
+      if (!signedUp || !tripDestination || !isExtraordinaryDestinationKey(tripDestination)) return;
+      const destName = getExtraordinaryStopName(tripDestination);
+      if (!destName) return;
+      const vid = activeVehicleIdOnMap;
+      const meta = vehicleMeta[vid] || {};
+      const rem = getStopEtaSecondsRemaining(meta, destName);
+      if (rem === null) return;
+      const el = document.getElementById(etaEl[vid]);
+      if (el) el.textContent = "Siguiente: " + destName + " · llegada " + formatArrivalTimeMadrid(rem);
+      const statusNode = document.getElementById(statusEl[vid]);
+      if (statusNode) {
+        statusNode.textContent = "Servicio directo " + destName + " · " + formatMinutesDelta(rem);
+      }
+    }
+
     function paintActiveVehicleRowOrchestratedHotelEtas() {
       if (!activeVehicleIdOnMap) return;
       if (!signedUp || selectedLocation !== "hotel" || !tripDestination) return;
+      if (!isOrchestratedCircuitDestinationKey(tripDestination)) return;
       if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return;
       const depInfo = getNextHotelOrchestratedDepartureInfo();
       const orch = computeStopEtas(-1, 0, depInfo.secondsUntil);
@@ -1789,11 +2064,27 @@
       }
       vehicleMeta[vehicleId] = meta;
 
+      if (
+        vehicleId === activeVehicleIdOnMap &&
+        signedUp &&
+        tripDestination &&
+        isExtraordinaryDestinationKey(tripDestination)
+      ) {
+        const destName = getExtraordinaryStopName(tripDestination);
+        const rem = destName ? getStopEtaSecondsRemaining(meta, destName) : null;
+        if (rem !== null) {
+          paintActiveVehicleExtraordinaryEta();
+          if (vehicleId === activeVehicleIdOnMap) updateLegendCompact();
+          return;
+        }
+      }
+
       const useOrchestratedHotelRow =
         vehicleId === activeVehicleIdOnMap &&
         signedUp &&
         selectedLocation === "hotel" &&
         tripDestination &&
+        isOrchestratedCircuitDestinationKey(tripDestination) &&
         routeLegDurationsSec &&
         routeLegDurationsSec.length === 4;
 
@@ -1918,6 +2209,9 @@
         zoom: 11,
         mapTypeControl: false,
         fullscreenControl: false,
+        zoomControl: false,
+        streetViewControl: false,
+        rotateControl: false,
         styles: [
           { featureType: "poi", stylers: [{ visibility: "off" }] },
           { featureType: "transit", stylers: [{ visibility: "off" }] }
@@ -1964,9 +2258,11 @@
           refreshPickupRoute();
           updateLegendCompact();
           fetchRouteT4ToHotelDrive(directionsService, function() {
-            refreshActiveVehicleEta(directionsService);
-            refreshPickupRoute();
-            updateLegendCompact();
+            fetchRouteHotelExtraordinaryDrives(directionsService, function() {
+              refreshActiveVehicleEta(directionsService);
+              refreshPickupRoute();
+              updateLegendCompact();
+            });
           });
         } else {
           circuitDirectionsRequestFailed = true;
@@ -1986,14 +2282,6 @@
 
       map.addListener("dragstart", onMapUserGesture);
       map.addListener("zoom_changed", onMapUserGesture);
-
-      const recenterBtn = document.getElementById("mapRecenterBtn");
-      if (recenterBtn) {
-        recenterBtn.addEventListener("click", function(event) {
-          event.stopPropagation();
-          recenterMapOnUserAndVehicle();
-        });
-      }
 
       // Icono visible para paradas: círculo con letra (hotel H, terminales T1–T4)
       function makeStopIcon(letter, color) {
@@ -2072,7 +2360,6 @@
         }
         syncNoVehicleMapBanner();
         setVehicleRowActive(activeVehicleIdOnMap);
-        updateRecenterButtonState();
 
         var activeId = activeOne ? activeOne.id : null;
         vehicleIds.forEach(function(id) {
@@ -2108,7 +2395,6 @@
           updateEtaFromGoogle(id, v.lat, v.lng, label, directionsService);
           updatePickupRoute(v.lat, v.lng, directionsService);
           if (signedUp && selectedLocation) updateTrackingFitLoop();
-          updateRecenterButtonState();
         }
         });
       }

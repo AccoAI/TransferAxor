@@ -9,7 +9,7 @@ Webapp para ver en tiempo real la ubicación de los transfers entre **Calle Camp
 
 ## Requisitos
 
-- Node.js 16 o superior
+- Node.js 18 o superior
 - **Google Maps**: Para ver el mapa y la ruta por carretera necesitas una API key de Google Cloud:
   1. Entra en [Google Cloud Console](https://console.cloud.google.com/) y crea o elige un proyecto.
   2. Activa **Maps JavaScript API** y **Directions API** (o “Directions API (Legacy)”).
@@ -17,6 +17,12 @@ Webapp para ver en tiempo real la ubicación de los transfers entre **Calle Camp
   4. En el proyecto: copia `public/config.js.example` como `public/config.js` y escribe tu clave:  
      `window.GOOGLE_MAPS_API_KEY = "tu_clave_aqui";`  
      O bien edita `public/mapa.html` y sustituye `YOUR_GOOGLE_MAPS_API_KEY` por tu clave.
+
+- **Consulta de vuelos** (programar con código tipo `IB872`): el servidor consulta horarios reales y comprueba que el vuelo **sale o llega a Madrid-Barajas (MAD)**. Necesitas al menos una de estas variables de entorno:
+  - **AeroDataBox** (recomendado, [RapidAPI AeroDataBox](https://rapidapi.com/aerodatabox/api/aerodatabox)): `AERODATABOX_RAPIDAPI_KEY` (o `AERODATABOX_API_KEY` si usas la suscripción directa).
+  - **Aviationstack** (alternativa, [aviationstack.com](https://aviationstack.com)): `AVIATIONSTACK_API_KEY`.
+
+  Sin clave, el mapa sigue funcionando; solo fallará la programación por código de vuelo.
 
 ## Instalación y arranque
 

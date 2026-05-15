@@ -7,6 +7,11 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
+const {
+  normalizeFlightCode,
+  lookupFlightForMadrid,
+  isFlightLookupConfigured,
+} = require("./lib/flightLookup");
 
 const app = express();
 const server = http.createServer(app);
@@ -124,6 +129,29 @@ if (process.env.GOOGLE_MAPS_API_KEY) {
 
 app.use(express.static(path.join(__dirname, "public")));
 
+app.get("/api/flight-lookup", async (req, res) => {
+  const location = String(req.query.location || "").toLowerCase();
+  try {
+    if (!isFlightLookupConfigured()) {
+      return res.status(503).json({ ok: false, error: "flight-lookup-unavailable" });
+    }
+    const result = await lookupFlightForMadrid(req.query.code, { location });
+    if (!result.ok) {
+      const status =
+        result.error === "flight-not-found"
+          ? 404
+          : result.error === "flight-lookup-unauthorized"
+            ? 503
+            : 400;
+      return res.status(status).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error("flight-lookup:", err.message || err);
+    return res.status(500).json({ ok: false, error: "flight-lookup-failed" });
+  }
+});
+
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "mapa.html")));
 app.get("/hotel", (req, res) => res.sendFile(path.join(__dirname, "public", "hotel.html")));
 app.get("/conductor", (req, res) => res.sendFile(path.join(__dirname, "public", "conductor.html")));
@@ -179,8 +207,14 @@ function getScheduledTripsForConductors() {
     list.push({ ...trip });
   }
   list.sort(function(a, b) {
-    const aKey = a.mode === "datetime" ? (a.departureDate + "T" + a.departureTime) : "z" + (a.flightCode || "");
-    const bKey = b.mode === "datetime" ? (b.departureDate + "T" + b.departureTime) : "z" + (b.flightCode || "");
+    const aKey =
+      a.departureDate && a.departureTime
+        ? a.departureDate + "T" + a.departureTime
+        : "z" + (a.flightCode || "");
+    const bKey =
+      b.departureDate && b.departureTime
+        ? b.departureDate + "T" + b.departureTime
+        : "z" + (b.flightCode || "");
     return aKey.localeCompare(bKey);
   });
   return list;
@@ -232,10 +266,6 @@ function madridTimeString(date) {
     minute: "2-digit",
     hour12: false,
   }).format(date || new Date());
-}
-
-function normalizeFlightCode(code) {
-  return String(code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
 }
 
 function parseDepartureDate(dateStr) {
@@ -362,7 +392,7 @@ io.on("connection", (socket) => {
     socket.emit("signup-status", { location: null, people: 0 });
   });
 
-  socket.on("schedule-trip", (data) => {
+  socket.on("schedule-trip", async (data) => {
     const location = data && data.location;
     if (!WAITING_LOCATIONS.includes(location)) {
       socket.emit("trip-schedule-status", { active: false, error: "invalid-location" });
@@ -378,7 +408,35 @@ io.on("connection", (socket) => {
         socket.emit("trip-schedule-status", { active: false, error: "invalid-flight" });
         return;
       }
+      if (!isFlightLookupConfigured()) {
+        socket.emit("trip-schedule-status", { active: false, error: "flight-lookup-unavailable" });
+        return;
+      }
+      let lookup;
+      try {
+        lookup = await lookupFlightForMadrid(flightCode, { location });
+      } catch (err) {
+        console.error("schedule-trip flight:", err.message || err);
+        socket.emit("trip-schedule-status", { active: false, error: "flight-lookup-failed" });
+        return;
+      }
+      if (!lookup.ok || !lookup.leg) {
+        socket.emit("trip-schedule-status", {
+          active: false,
+          error: lookup.error || "flight-not-found",
+        });
+        return;
+      }
       trip.flightCode = flightCode;
+      trip.flightDate = lookup.leg.date;
+      trip.flightTime = lookup.leg.time;
+      trip.flightLeg = lookup.leg.direction;
+      trip.flightTerminal = lookup.leg.terminal || null;
+      trip.flightOtherAirport = lookup.leg.otherIata || null;
+      trip.flightOtherAirportName = lookup.leg.otherName || null;
+      trip.flightStatus = lookup.leg.status || null;
+      trip.departureDate = lookup.leg.date;
+      trip.departureTime = lookup.leg.time;
     } else {
       const departureDate = parseDepartureDate(data && data.departureDate);
       const departureTime = parseDepartureTime(data && data.departureTime);
