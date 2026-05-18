@@ -748,7 +748,10 @@
         return "Consulta de vuelos no configurada en el servidor (falta API de aerolíneas).";
       }
       if (code === "flight-lookup-unauthorized") {
-        return "No se pudo consultar el vuelo (revisa AERODATABOX_RAPIDAPI_KEY o AVIATIONSTACK_API_KEY en el servidor).";
+        return "La clave del proveedor de vuelos fue rechazada (inválida o caducada). Revisa AERODATABOX_RAPIDAPI_KEY o AVIATIONSTACK_API_KEY en Render y vuelve a desplegar.";
+      }
+      if (code === "flight-lookup-plan-restricted") {
+        return "Aviationstack plan gratuito: no admite HTTPS ni el filtro por fecha. El servidor ya intenta HTTP; si sigue fallando, usa AeroDataBox (RapidAPI) o sube de plan.";
       }
       if (code === "flight-terminal-unknown") {
         return "No pudimos asignar terminal en Barajas para este vuelo.";
@@ -877,6 +880,7 @@
       else if (code === "flight-not-madrid") target.textContent = flightLookupErrorMessage(code);
       else if (code === "flight-lookup-unavailable") target.textContent = flightLookupErrorMessage(code);
       else if (code === "flight-lookup-unauthorized") target.textContent = flightLookupErrorMessage(code);
+      else if (code === "flight-lookup-plan-restricted") target.textContent = flightLookupErrorMessage(code);
       else if (code === "flight-lookup-failed") target.textContent = flightLookupErrorMessage(code);
       else if (code === "flight-terminal-unknown") target.textContent = flightLookupErrorMessage(code);
       else if (code === "invalid-datetime") target.textContent = "Indica día y hora de salida";
@@ -1186,26 +1190,70 @@
     }
 
     function computeEtaSecondsToStop(currentLeg, remainingOnLegSec, departureWaitSec, stopName) {
-      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
       const targetIdx = ROUTE_STOP_NAMES.indexOf(stopName);
       if (targetIdx < 0) return null;
-      const start = currentLeg < 0 ? 0 : currentLeg;
-      if (targetIdx < start) return null;
+      return computeCircuitSecondsToReachStopIndex(
+        currentLeg,
+        remainingOnLegSec,
+        departureWaitSec,
+        targetIdx
+      );
+    }
+
+    /** Índice de parada del circuito donde espera el pasajero (0=T1 … 3=Hotel). */
+    function getPassengerBoardingStopIndex() {
+      if (!selectedLocation) return null;
+      return locationKeyToStopIndex(selectedLocation);
+    }
+
+    function getPassengerBoardingStopName() {
+      const idx = getPassengerBoardingStopIndex();
+      if (idx === null) return null;
+      return ROUTE_STOP_NAMES[idx];
+    }
+
+    /**
+     * Segundos hasta que el bus llega a una parada del circuito siguiendo el sentido
+     * Hotel→T1→T2→T4→Hotel (incluye paradas en terminales y vuelta completa si ya pasó la parada).
+     */
+    function computeCircuitSecondsToReachStopIndex(currentLeg, remainingOnLegSec, departureWaitSec, targetStopIndex) {
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) return null;
+      if (targetStopIndex < 0 || targetStopIndex > 3) return null;
+      const par = PARADA_TERMINAL_MIN * 60;
       let sec = departureWaitSec || 0;
+
       if (currentLeg < 0) {
-        if (targetIdx === 3) {
-          const h = getHotelArrivalSecOrchestratedFromHotel(departureWaitSec);
-          return h == null ? null : h;
-        } else {
-          for (let i = 0; i <= targetIdx; i++) sec += routeLegDurationsSec[i];
-          sec += targetIdx * PARADA_TERMINAL_MIN * 60;
-        }
-      } else {
-        sec += remainingOnLegSec;
-        for (let i = currentLeg + 1; i <= targetIdx; i++) sec += routeLegDurationsSec[i];
-        sec += (targetIdx - currentLeg) * PARADA_TERMINAL_MIN * 60;
+        if (targetStopIndex === 3) return sec;
+        for (let i = 0; i <= targetStopIndex; i++) sec += routeLegDurationsSec[i];
+        sec += targetStopIndex * par;
+        return sec;
       }
+
+      sec += remainingOnLegSec || 0;
+      if (targetStopIndex === currentLeg) return sec;
+      if (targetStopIndex > currentLeg) {
+        for (let i = currentLeg + 1; i <= targetStopIndex; i++) sec += routeLegDurationsSec[i];
+        sec += (targetStopIndex - currentLeg) * par;
+        return sec;
+      }
+      for (let i = currentLeg + 1; i <= 3; i++) sec += routeLegDurationsSec[i];
+      sec += (3 - currentLeg) * par;
+      for (let i = 0; i <= targetStopIndex; i++) sec += routeLegDurationsSec[i];
+      sec += targetStopIndex * par;
       return sec;
+    }
+
+    function estimateRemainingOnLegSec(lat, lng, currentLeg) {
+      const end = getEndOfLeg(currentLeg);
+      const legSec = routeLegDurationsSec[currentLeg] || 600;
+      const start =
+        currentLeg === 0
+          ? { lat: CAMPEZO.lat, lng: CAMPEZO.lng }
+          : getStopLatLng(currentLeg - 1);
+      const totalKm = distanceKm(start.lat, start.lng, end.lat, end.lng);
+      if (totalKm < 0.05) return legSec;
+      const toEndKm = distanceKm(lat, lng, end.lat, end.lng);
+      return Math.round(legSec * Math.min(1, Math.max(0, toEndKm / totalKm)));
     }
 
     function getStopEtaSecondsRemaining(meta, stopName) {
@@ -1303,8 +1351,8 @@
         return;
       }
 
-      const destination = getDestinationStopName();
-      if (!destination) {
+      const boardingStop = getPassengerBoardingStopName();
+      if (!boardingStop) {
         legendCompactEl.textContent = "Apúntate para ver tu llegada";
         return;
       }
@@ -1314,7 +1362,7 @@
         return;
       }
       const meta = vehicleMeta[vehicleId] || {};
-      const remaining = getStopEtaSecondsRemaining(meta, destination);
+      const remaining = getStopEtaSecondsRemaining(meta, boardingStop);
       if (remaining === null) {
         legendCompactEl.textContent = "Calculando…";
         return;
@@ -1333,6 +1381,249 @@
       const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return R * c;
+    }
+
+    function distanceKmToSegment(px, py, x1, y1, x2, y2) {
+      const latMid = (px + x1 + x2) / 3;
+      const cosLat = Math.cos((latMid * Math.PI) / 180);
+      const kx = 111.32 * cosLat;
+      const ky = 110.57;
+      const dx = (x2 - x1) * kx;
+      const dy = (y2 - y1) * ky;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-12) return distanceKm(px, py, x1, y1);
+      const t = Math.max(0, Math.min(1, ((px - x1) * kx * dx + (py - y1) * ky * dy) / len2));
+      return distanceKm(px, py, x1 + t * (x2 - x1), y1 + t * (y2 - y1));
+    }
+
+    /** Evita cambiar de transfer si el otro solo gana por poco en tiempo de circuito. */
+    const ACTIVE_VEHICLE_HYSTERESIS_SEC = 120;
+    var activeVehiclePickToken = 0;
+    var vehicleLegRemainingCache = {};
+
+    function pickActiveVehicleByDistanceFallback(vehicles) {
+      const waitPt = hasSignupDestinationReady() ? getPassengerSignupOriginLatLng() : null;
+      let best = null;
+      let bestDist = Infinity;
+      vehicleIds.forEach(function(id) {
+        const v = vehicles[id];
+        if (!v || !v.lastUpdate || !Number.isFinite(v.lat) || !Number.isFinite(v.lng)) return;
+        const dist = waitPt
+          ? distanceKm(v.lat, v.lng, waitPt.lat, waitPt.lng)
+          : distanceKm(v.lat, v.lng, CAMPEZO.lat, CAMPEZO.lng);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { id: id, v: v };
+        }
+      });
+      return best;
+    }
+
+    function pickExtraordinaryActiveVehicle(vehicles) {
+      let best = null;
+      let bestSec = Infinity;
+      vehicleIds.forEach(function(id) {
+        const v = vehicles[id];
+        if (!v || !v.lastUpdate || !Number.isFinite(v.lat) || !Number.isFinite(v.lng)) return;
+        const svc = getVehicleService(id);
+        let sec = Infinity;
+        if (svc.serviceMode === "adhoc") {
+          const meta = vehicleMeta[id] || {};
+          const destName = getExtraordinaryStopName(tripDestination);
+          const rem = destName ? getStopEtaSecondsRemaining(meta, destName) : null;
+          if (rem !== null) sec = rem;
+          else sec = distanceKm(v.lat, v.lng, CAMPEZO.lat, CAMPEZO.lng) * 120;
+        } else {
+          sec = distanceKm(v.lat, v.lng, CAMPEZO.lat, CAMPEZO.lng) * 120;
+        }
+        if (id === activeVehicleIdOnMap) sec = Math.max(0, sec - ACTIVE_VEHICLE_HYSTERESIS_SEC);
+        if (sec < bestSec) {
+          bestSec = sec;
+          best = { id: id, v: v };
+        }
+      });
+      return best || pickActiveVehicleByDistanceFallback(vehicles);
+    }
+
+    function fetchRemainingOnLegSec(id, v, currentLeg, directionsService, token, cb) {
+      const cache = vehicleLegRemainingCache[id];
+      if (
+        cache &&
+        cache.leg === currentLeg &&
+        distanceKm(v.lat, v.lng, cache.lat, cache.lng) < ETA_THROTTLE_KM &&
+        Date.now() - cache.at < 45000
+      ) {
+        cb(cache.sec);
+        return;
+      }
+      if (!directionsService || currentLeg < 0) {
+        cb(0);
+        return;
+      }
+      const endPoint = getEndOfLeg(currentLeg);
+      directionsService.route(
+        {
+          origin: { lat: v.lat, lng: v.lng },
+          destination: endPoint,
+          travelMode: google.maps.TravelMode.DRIVING,
+          region: "es"
+        },
+        function(result, status) {
+          if (token !== activeVehiclePickToken) return;
+          let sec =
+            status === google.maps.DirectionsStatus.OK && result.routes[0]
+              ? result.routes[0].legs[0].duration.value
+              : estimateRemainingOnLegSec(v.lat, v.lng, currentLeg);
+          vehicleLegRemainingCache[id] = { leg: currentLeg, sec: sec, at: Date.now(), lat: v.lat, lng: v.lng };
+          cb(sec);
+        }
+      );
+    }
+
+    /**
+     * Transfer en mapa: el que antes llega a tu parada siguiendo el circuito (Maps + tramos),
+     * no el más cercano en línea recta.
+     */
+    function resolveActiveVehicleForPassenger(vehicles, directionsService, done) {
+      const token = ++activeVehiclePickToken;
+      if (!hasSignupDestinationReady()) {
+        done(pickActiveVehicleByDistanceFallback(vehicles), token);
+        return;
+      }
+
+      if (isExtraordinaryDestinationKey(tripDestination)) {
+        done(pickExtraordinaryActiveVehicle(vehicles), token);
+        return;
+      }
+
+      const boardingIdx = getPassengerBoardingStopIndex();
+      if (boardingIdx === null) {
+        done(pickActiveVehicleByDistanceFallback(vehicles), token);
+        return;
+      }
+
+      if (!routeLegDurationsSec || routeLegDurationsSec.length !== 4) {
+        done(pickActiveVehicleByDistanceFallback(vehicles), token);
+        return;
+      }
+
+      const candidates = [];
+      vehicleIds.forEach(function(id) {
+        const v = vehicles[id];
+        if (!v || !v.lastUpdate || !Number.isFinite(v.lat) || !Number.isFinite(v.lng)) return;
+        if (getVehicleService(id).serviceMode === "adhoc") return;
+        candidates.push({
+          id: id,
+          v: v,
+          currentLeg: getCurrentLegIndex(v.lat, v.lng)
+        });
+      });
+
+      if (!candidates.length) {
+        done(pickActiveVehicleByDistanceFallback(vehicles), token);
+        return;
+      }
+
+      const scores = [];
+      let pending = 0;
+
+      function finishPick() {
+        if (token !== activeVehiclePickToken) return;
+        let best = null;
+        let bestSec = Infinity;
+        scores.forEach(function(s) {
+          let sec = s.sec;
+          if (s.id === activeVehicleIdOnMap) sec = Math.max(0, sec - ACTIVE_VEHICLE_HYSTERESIS_SEC);
+          if (sec < bestSec) {
+            bestSec = sec;
+            best = { id: s.id, v: s.v };
+          }
+        });
+        done(best || pickActiveVehicleByDistanceFallback(vehicles), token);
+      }
+
+      function pushScore(id, v, currentLeg, remainingOnLegSec, departureWaitSec) {
+        const sec = computeCircuitSecondsToReachStopIndex(
+          currentLeg,
+          remainingOnLegSec,
+          departureWaitSec,
+          boardingIdx
+        );
+        if (sec !== null) scores.push({ id: id, v: v, sec: sec });
+      }
+
+      candidates.forEach(function(c) {
+        if (c.currentLeg < 0) {
+          const sched = getVehicleService(c.id).circuitSchedule === "B" ? "B" : "A";
+          pushScore(c.id, c.v, -1, 0, getSecondsUntilHotelDepartureCircuit(sched));
+          return;
+        }
+        pending++;
+        fetchRemainingOnLegSec(c.id, c.v, c.currentLeg, directionsService, token, function(remaining) {
+          if (token !== activeVehiclePickToken) return;
+          pushScore(c.id, c.v, c.currentLeg, remaining, 0);
+          pending--;
+          if (pending === 0) finishPick();
+        });
+      });
+
+      if (pending === 0) finishPick();
+    }
+
+    function applyActiveVehicleChoice(vehicles, activeOne) {
+      if (activeOne) lastVehiclesLive[activeOne.id] = true;
+      activeVehicleIdOnMap = activeOne ? activeOne.id : null;
+      if (!activeOne) {
+        lastActiveVehicleEta = null;
+        refreshPickupRoute();
+        stopTrackingFitLoop();
+        if (circuitDirectionsResult && directionsRenderer && map) {
+          directionsRenderer.setMap(map);
+          directionsRenderer.setDirections(circuitDirectionsResult);
+          applyCircuitPolylineStyle();
+          scheduleFitRouteViewport(circuitDirectionsResult);
+        }
+      } else {
+        applyCircuitPolylineStyle();
+      }
+      syncNoVehicleMapBanner();
+      setVehicleRowActive(activeVehicleIdOnMap);
+
+      const activeId = activeOne ? activeOne.id : null;
+      vehicleIds.forEach(function(id) {
+        const vehicle = vehicles[id];
+        if (!vehicle) return;
+        const label = vehicle.label || id;
+        setPaxForVehicle(id, vehicle.passengers, vehicle.capacity, id === activeId);
+        if (id !== activeId && vehicleMarkers[id]) {
+          vehicleMarkers[id].setMap(null);
+          vehicleMarkers[id] = null;
+        }
+        if (id !== activeId) setEtaForVehicle(id, label, { summary: "—", detail: "" });
+      });
+
+      if (activeOne) {
+        const id = activeOne.id;
+        const v = activeOne.v;
+        const label = v.label || id;
+        lastActiveVehicleEta = { id: id, lat: v.lat, lng: v.lng, label: label };
+        const pos = { lat: v.lat, lng: v.lng };
+        if (vehicleMarkers[id]) {
+          vehicleMarkers[id].setPosition(pos);
+        } else {
+          vehicleMarkers[id] = new google.maps.Marker({
+            map: map,
+            position: pos,
+            title: label,
+            icon: createVehicleIcon(id),
+            zIndex: 100
+          });
+        }
+        setPaxForVehicle(id, v.passengers, v.capacity, true);
+        updateEtaFromGoogle(id, v.lat, v.lng, label, directionsServiceInstance);
+        updatePickupRoute(v.lat, v.lng, directionsServiceInstance);
+        if (signedUp && selectedLocation) updateTrackingFitLoop();
+      }
     }
 
     // Última posición con la que pedimos ETA a Google (para no abusar de la API)
@@ -1610,6 +1901,17 @@
       return waypoints;
     }
 
+    /** Ruta del bus activo: primero hasta tu parada de espera y luego hasta tu destino. */
+    function buildVehiclePickupWaypoints(currentLeg, boardingStopIndex, destinationStopIndex) {
+      if (boardingStopIndex === null || destinationStopIndex === null) return [];
+      if (boardingStopIndex === destinationStopIndex) {
+        return buildCircuitWaypoints(currentLeg, destinationStopIndex);
+      }
+      const toBoarding = buildCircuitWaypoints(currentLeg, boardingStopIndex);
+      const afterBoarding = buildCircuitWaypoints(boardingStopIndex, destinationStopIndex);
+      return toBoarding.concat(afterBoarding);
+    }
+
     /**
      * Ruta de portada sin conductor: siempre el recorrido del circuito desde el hotel
      * (Hotel → T1 → T2 → … hasta la parada de espera), no un tramo directo tipo Hotel→T4.
@@ -1868,7 +2170,12 @@
         clearVehiclePickupRoute();
         return;
       }
-      const waypoints = buildCircuitWaypoints(currentLeg, destinationStopIndex);
+      const boardingStopIndex =
+        selectedLocation === "hotel" ? null : locationKeyToStopIndex(selectedLocation);
+      const waypoints =
+        boardingStopIndex !== null
+          ? buildVehiclePickupWaypoints(currentLeg, boardingStopIndex, destinationStopIndex)
+          : buildCircuitWaypoints(currentLeg, destinationStopIndex);
       directionsService.route({
         origin: { lat: lat, lng: lng },
         destination: destination,
@@ -2498,63 +2805,10 @@
           };
         });
 
-        var activeOne = null;
-        for (const [id, v] of Object.entries(vehicles)) {
-          if (v.lastUpdate && !activeOne) activeOne = { id: id, v: v };
-        }
-        if (activeOne) lastVehiclesLive[activeOne.id] = true;
-        activeVehicleIdOnMap = activeOne ? activeOne.id : null;
-        if (!activeOne) {
-          lastActiveVehicleEta = null;
-          refreshPickupRoute();
-          stopTrackingFitLoop();
-          if (circuitDirectionsResult && directionsRenderer && map) {
-            directionsRenderer.setMap(map);
-            directionsRenderer.setDirections(circuitDirectionsResult);
-            applyCircuitPolylineStyle();
-            scheduleFitRouteViewport(circuitDirectionsResult);
-          }
-        } else {
-          applyCircuitPolylineStyle();
-        }
-        syncNoVehicleMapBanner();
-        setVehicleRowActive(activeVehicleIdOnMap);
-
-        var activeId = activeOne ? activeOne.id : null;
-        vehicleIds.forEach(function(id) {
-          var vehicle = vehicles[id];
-          if (!vehicle) return;
-          var label = vehicle.label || id;
-          setPaxForVehicle(id, vehicle.passengers, vehicle.capacity, id === activeId);
-          if (id !== activeId && vehicleMarkers[id]) {
-            vehicleMarkers[id].setMap(null);
-            vehicleMarkers[id] = null;
-          }
-          if (id !== activeId) setEtaForVehicle(id, label, { summary: "—", detail: "" });
+        resolveActiveVehicleForPassenger(vehicles, directionsService, function(activeOne, pickToken) {
+          if (pickToken !== activeVehiclePickToken) return;
+          applyActiveVehicleChoice(vehicles, activeOne);
         });
-
-        if (activeOne) {
-          var id = activeOne.id;
-          var v = activeOne.v;
-          var label = v.label || id;
-          lastActiveVehicleEta = { id: id, lat: v.lat, lng: v.lng, label: label };
-          var pos = { lat: v.lat, lng: v.lng };
-          if (vehicleMarkers[id]) {
-            vehicleMarkers[id].setPosition(pos);
-          } else {
-            vehicleMarkers[id] = new google.maps.Marker({
-              map: map,
-              position: pos,
-              title: label,
-              icon: createVehicleIcon(id),
-              zIndex: 100
-            });
-          }
-          setPaxForVehicle(id, v.passengers, v.capacity, true);
-          updateEtaFromGoogle(id, v.lat, v.lng, label, directionsService);
-          updatePickupRoute(v.lat, v.lng, directionsService);
-          if (signedUp && selectedLocation) updateTrackingFitLoop();
-        }
         });
       }
     }

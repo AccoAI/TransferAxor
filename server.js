@@ -12,6 +12,7 @@ const {
   lookupFlightForMadrid,
   legToWaitingLocation,
   isFlightLookupConfigured,
+  getFlightLookupStatus,
 } = require("./lib/flightLookup");
 
 const app = express();
@@ -129,6 +130,17 @@ app.get("/config.js", (req, res) => {
 
 app.use(express.static(path.join(__dirname, "public")));
 
+app.get("/api/flight-lookup/status", (req, res) => {
+  const configured = getFlightLookupStatus();
+  return res.json({
+    ok: true,
+    configured: configured,
+    message: configured.any
+      ? "Al menos un proveedor de vuelos tiene clave en el servidor."
+      : "No hay AERODATABOX_RAPIDAPI_KEY ni AVIATIONSTACK_API_KEY en el servidor.",
+  });
+});
+
 app.get("/api/flight-lookup", async (req, res) => {
   const location = String(req.query.location || "").toLowerCase();
   try {
@@ -140,7 +152,8 @@ app.get("/api/flight-lookup", async (req, res) => {
       const status =
         result.error === "flight-not-found"
           ? 404
-          : result.error === "flight-lookup-unauthorized"
+          : result.error === "flight-lookup-unauthorized" ||
+              result.error === "flight-lookup-plan-restricted"
             ? 503
             : 400;
       return res.status(status).json(result);
